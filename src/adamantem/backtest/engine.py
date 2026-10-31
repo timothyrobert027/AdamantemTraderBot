@@ -27,6 +27,32 @@ VARIANTS = {
 }
 
 
+EXIT_TEXT = {
+    "stop": "stop loss",
+    "target": "target",
+    "time": "limite di 6 ore",
+    "session": "fine sessione",
+}
+REJECT_TEXT = {
+    "session": ("scanner", "Rottura fuori dalla finestra di entrata: scartata."),
+    "warmup": ("scanner", "Dati insufficienti per gli indicatori: scartata."),
+    "volatility_regime": ("scanner", "Volatilità fuori dal range 30°–95° percentile: scartata."),
+    "spread_vs_atr": ("scanner", "Spread oltre il 10% dell'ATR M5: scartata."),
+    "trend_filter": ("scanner", "Contro il trend H1 (EMA200): scartata."),
+    "busy": ("boss", "C'è già un ordine o una posizione: setup ignorato."),
+    "kill_switch": ("risk", "NO: blocco automatico attivo."),
+    "daily_pause": ("risk", "NO: pausa giornaliera attiva."),
+    "weekly_loss_limit": ("risk", "NO: limite settimanale raggiunto."),
+    "max_trades_per_day": ("risk", "NO: già 3 trade oggi."),
+    "invalid_stop": ("risk", "NO: stop non valido."),
+    "spread_vs_stop": ("risk", "NO: lo spread supera il 10% dello stop."),
+    "no_room": ("risk", "NO: la zona opposta è a meno di 2R."),
+    "min_lot_exceeds_risk": ("risk", "NO: anche 0,01 lotti rischierebbe troppo."),
+    "leverage_cap": ("risk", "NO: supererebbe il tetto di leva."),
+    "free_margin": ("risk", "NO: margine libero insufficiente."),
+}
+
+
 def _hm(text: str) -> int:
     h, m = text.split(":")
     return int(h) * 60 + int(m)
@@ -39,6 +65,7 @@ class Armed:
     context: str
     extreme: float  # lowest low (long) / highest high (short) since arming
     ref: object = None  # FVG
+    zone_ids: tuple = ()
 
 
 @dataclass
@@ -55,6 +82,9 @@ class Pending:
     volume: float
     risk_money: float
     context: str
+    arm_i: int = -1
+    fvg_i: int = -1
+    zone_ids: tuple = ()
 
 
 @dataclass
@@ -73,6 +103,15 @@ class Trade:
     r_multiple: float
     exit_reason: str
     equity_after: float
+    # bar indices and setup geometry, for charts and replay
+    arm_i: int = -1
+    fvg_i: int = -1
+    break_i: int = -1
+    fill_i: int = -1
+    exit_i: int = -1
+    fvg_bottom: float = float("nan")
+    fvg_top: float = float("nan")
+    zone_ids: tuple = ()
 
 
 @dataclass
@@ -81,6 +120,8 @@ class Result:
     counters: dict[str, int] = field(default_factory=dict)
     halted_at: pd.Timestamp | None = None
     start_equity: float = 0.0
+    # (bar index, bot, state, text) - filled only when record_events=True
+    events: list[tuple[int, str, str, str]] = field(default_factory=list)
 
 
 class RiskState:
@@ -146,6 +187,7 @@ def run_backtest(
     spec: SymbolSpec,
     start_equity: float = 500.0,
     extra_spread: float = 0.0,
+    record_events: bool = False,
 ) -> Result:
     var = VARIANTS[variant]
     n = len(mk.t_open)
@@ -170,8 +212,14 @@ def run_backtest(
     c: dict[str, int] = {}
     halted_at = None
 
+    events: list[tuple[int, str, str, str]] = []
+
     def bump(key: str) -> None:
         c[key] = c.get(key, 0) + 1
+
+    def ev(i: int, bot: str, state: str, text: str) -> None:
+        if record_events:
+            events.append((int(i), bot, state, text))
 
     def in_entry_window(i: int) -> bool:
         m, wd = mk.close_minute[i], mk.close_weekday[i]
@@ -184,6 +232,7 @@ def run_backtest(
         sign = 1.0 if pos.side == "long" else -1.0
         pnl = sign * (price - pos.limit) * pos.volume * spec.contract_size
         pnl -= spec.commission_per_lot * pos.volume
+        before = (rs.paused_day, rs.paused_week, rs.halted)
         rs.on_close(pnl)
         trades.append(
             Trade(
@@ -201,9 +250,29 @@ def run_backtest(
                 r_multiple=pnl / pos.risk_money,
                 exit_reason=reason,
                 equity_after=rs.equity,
+                arm_i=pos.arm_i,
+                fvg_i=pos.fvg_i,
+                break_i=pos.placed_i,
+                fill_i=pos_fill_i,
+                exit_i=k,
+                fvg_bottom=pos.gap_bottom,
+                fvg_top=pos.gap_top,
+                zone_ids=pos.zone_ids,
             )
         )
         bump(f"exit_{reason}")
+        r_mult = pnl / pos.risk_money
+        ev(k, "exec", "ok" if pnl > 0 else "bad",
+           f"Uscita ({EXIT_TEXT[reason]}) a {price:.2f}.")
+        ev(k, "ledger", "ok", f"Trade registrato: {r_mult:+.2f}R, ${pnl:+.2f}. Conto ${rs.equity:.2f}.")
+        ev(k, "boss", "work", "Nessuna posizione aperta: torno a cercare setup.")
+        after = (rs.paused_day, rs.paused_week, rs.halted)
+        if after[2] and not before[2]:
+            ev(k, "risk", "bad", "BLOCCO AUTOMATICO: drawdown massimo raggiunto. Stop a tutto.")
+        elif after[1] and not before[1]:
+            ev(k, "risk", "bad", "Limite di perdita settimanale: pausa fino a lunedì.")
+        elif after[0] and not before[0]:
+            ev(k, "risk", "bad", "Pausa per oggi: limite giornaliero o 3 perdite di fila.")
         if rs.halted and halted_at is None:
             halted_at = mk.t_open[k]
         pos = None
@@ -220,9 +289,14 @@ def run_backtest(
         """A close through the reference FVG: try to place the retest limit order."""
         nonlocal pending
         bump(f"break_{a.context}")
+        word = "sopra" if side == "long" else "sotto"
+        ev(i, "sniper", "work",
+           f"Chiusura M5 {word} l'FVG {f.bottom:.2f}–{f.top:.2f}: inversione. Chiedo l'ok sul rischio.")
 
         def reject(reason: str) -> None:
             bump(f"reject_{reason}")
+            bot, text = REJECT_TEXT.get(reason, ("risk", reason))
+            ev(i, bot, "bad", text)
 
         if not in_entry_window(i):
             return reject("session")
@@ -279,8 +353,14 @@ def run_backtest(
             side=side, placed_i=i, expire_i=i + params["retest_window_bars"], limit=limit,
             stop=stop, target=target, risk_r=r, gap_bottom=f.bottom, gap_top=f.top,
             volume=size.volume, risk_money=size.risk_money, context=a.context,
+            arm_i=a.arm_i, fvg_i=f.index, zone_ids=a.zone_ids,
         )
         bump("orders_placed")
+        pct = 100 * size.risk_money / rs.equity
+        ev(i, "risk", "ok", f"Approvato: {size.volume:.2f} lotti, rischio ${size.risk_money:.2f} ({pct:.1f}%).")
+        kind = "Buy" if side == "long" else "Sell"
+        ev(i, "exec", "work",
+           f"{kind} limit sul retest a {limit:.2f}, stop {stop:.2f}, target {target:.2f}.")
 
     for i in range(n):
         rs.roll(mk.t_open[i])
@@ -305,25 +385,31 @@ def run_backtest(
                 pending, pos, pos_fill_i = None, p, i
                 rs.trades_today += 1
                 bump("fills")
+                ev(i, "exec", "ok", f"Limit eseguito a {p.limit:.2f}. Stop e target sul server.")
+                ev(i, "boss", "wait", "Posizione aperta: nuove entrate in pausa.")
                 px = stop_hit(i)
                 if px is not None:
                     close_position(i, px, "stop")
             elif not in_entry_window(i):
                 pending = None
                 bump("cancel_session")
+                ev(i, "exec", "wait", "Ordine annullato: fine della finestra di entrata.")
             elif (p.side == "long" and mk.bc[i] < p.gap_bottom) or (
                 p.side == "short" and mk.bc[i] > p.gap_top
             ):
                 pending = None
                 bump("cancel_inversion_failed")
+                ev(i, "exec", "wait", "Ordine annullato: chiusura oltre il gap, inversione fallita.")
             elif (p.side == "long" and mk.bh[i] >= p.limit + p.risk_r * params["cancel_if_moved_r"]) or (
                 p.side == "short" and mk.bl[i] <= p.limit - p.risk_r * params["cancel_if_moved_r"]
             ):
                 pending = None
                 bump("cancel_moved_away")
+                ev(i, "exec", "wait", "Ordine annullato: il prezzo è partito senza retest.")
             elif i >= p.expire_i:
                 pending = None
                 bump("cancel_expired")
+                ev(i, "exec", "wait", "Ordine annullato: nessun retest entro 1 ora.")
 
         # 3. Zone bookkeeping.
         for zid in mk.zone_valid_end.get(i, ()):
@@ -356,6 +442,7 @@ def run_backtest(
                 if i > a.expire_i:
                     armed[side] = None
                     bump("arm_expired")
+                    ev(i, "sniper", "idle", "Setup scaduto: nessuna rottura dell'FVG in 3 ore.")
             hits = [zones[z] for z in touched if zones[z].side == zside]
             context = None
             if hits:
@@ -389,8 +476,21 @@ def run_backtest(
             ref = last_fvg[side]
             if ref is not None and ref.index < i - params["fvg_max_age_before_arm_bars"]:
                 ref = None
-            armed[side] = Armed(i, i + params["arm_window_bars"], context, ext, ref)
+            zone_ids = tuple(z.zid for z in hits)
+            armed[side] = Armed(i, i + params["arm_window_bars"], context, ext, ref, zone_ids)
             bump(f"arm_{context}")
+            if not hits and cur is not None and cur.context == "NONE":
+                continue  # a deeper extreme only refreshes the no-zone setup; don't log it
+            if hits:
+                z = max(hits, key=lambda h: h.tf == "H4")
+                kind = "domanda" if zside == "demand" else "offerta"
+                ev(i, "hunter", "work",
+                   f"Zona di {kind} {z.tf} toccata ({z.low:.2f}–{z.high:.2f}). Contesto {context}.")
+            else:
+                word = "minimo" if side == "long" else "massimo"
+                ev(i, "hunter", "idle", f"Nessuna zona vicina: nuovo {word} a 36 candele.")
+            target = "ribassista" if side == "long" else "rialzista"
+            ev(i, "sniper", "work", f"Setup {side} armato ({context}). Seguo l'ultimo FVG {target}.")
 
         # 6. New FVG at this bar (known at its close).
         for side, fv in (("long", mk.bear[i]), ("short", mk.bull[i])):
@@ -398,5 +498,7 @@ def run_backtest(
                 last_fvg[side] = fv
                 if armed[side] is not None:
                     armed[side].ref = fv
+                    ev(i, "sniper", "work", f"Nuovo FVG di riferimento {fv.bottom:.2f}–{fv.top:.2f}.")
 
-    return Result(trades=trades, counters=c, halted_at=halted_at, start_equity=start_equity)
+    return Result(trades=trades, counters=c, halted_at=halted_at, start_equity=start_equity,
+                  events=events)

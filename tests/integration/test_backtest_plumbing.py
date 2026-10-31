@@ -85,3 +85,23 @@ def test_no_edge_on_random_walk(cfg):
     assert len(r) > 400
     t_stat = r.mean() / (r.std(ddof=1) / np.sqrt(len(r)))
     assert t_stat < 2.0, f"random walk shows a significant edge: mean {r.mean():.3f}R, t={t_stat:.2f}"
+
+
+def test_replay_export_matches_trades(cfg, market):
+    from adamantem.backtest.replay import build_replay
+
+    prof = cfg["risk"]["profiles"]["aggressive"]
+    res = run_backtest(market, cfg["strategy"], cfg["scanner"], cfg["risk"], prof, "FVG-A",
+                       SymbolSpec(), 500.0, 0.0, record_events=True)
+    rep = build_replay(market, res, "test", {})
+    assert len(rep["trades"]) == len(res.trades)
+    for t in rep["trades"]:
+        m = t["marks"]
+        assert m["arm"] <= m["break"] <= m["fill"] <= m["exit"]
+        times = [b[0] for b in t["bars"]]
+        assert times == sorted(times) and times[0] <= m["fill"] <= times[-1]
+        assert t["day"] in rep["days"]  # every trade day has its bot events
+    for events in rep["days"].values():
+        assert [e[0] for e in events] == sorted(e[0] for e in events)
+        assert {e[1] for e in events} <= {"scanner", "hunter", "sniper", "risk", "exec",
+                                          "ledger", "boss"}

@@ -66,6 +66,23 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .card code { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
 .s-idle { color: var(--idle); } .s-work { color: var(--gold); } .s-ok { color: var(--ok); } .s-bad { color: var(--bad); } .s-wait { color: var(--wait); }
 
+.replay { display: grid; gap: 12px; }
+.replay h2 { font-family: var(--display); font-weight: 400; font-size: 16px; margin: 0; letter-spacing: .03em; }
+.dayctl { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.dayctl select, .dayctl button { font-family: var(--mono); font-size: 13px; padding: 7px 10px; border-radius: 3px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); }
+.dayctl button { cursor: pointer; }
+.trades { display: grid; gap: 8px; }
+.trade { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 12px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; padding: 9px 12px; cursor: pointer; text-align: left; color: var(--fg); font: inherit; font-size: 13.5px; }
+.trade.sel { border-color: var(--gold); }
+.trade .side { font-family: var(--mono); font-size: 12px; }
+.trade .r { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 500; }
+.trade .detail { grid-column: 1 / -1; color: var(--muted); font-size: 12.5px; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.chartbox { background: #0d1014; border: 1px solid var(--line); border-radius: 3px; padding: 10px; display: grid; gap: 8px; min-width: 0; }
+.chartbox canvas { width: 100%; height: 280px; display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 14px; height: 8px; display: inline-block; border-radius: 1px; }
+.empty { color: var(--muted); font-size: 13.5px; }
 footer { color: var(--muted); font-size: 12.5px; display: grid; gap: 4px; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
@@ -78,14 +95,14 @@ footer { color: var(--muted); font-size: 12.5px; display: grid; gap: 4px; }
     </div>
     <div class="mode" role="group" aria-label="Fonte dei dati">
       <button id="mode-example" aria-pressed="true">Giornata d'esempio</button>
-      <button id="mode-live" disabled title="Disponibile quando il backtest o la demo MT5 scrivono nel journal">Dati reali · presto</button>
+      <button id="mode-live" aria-pressed="false" disabled title="Disponibile quando il backtest pubblica i risultati">Replay backtest · in attesa</button>
     </div>
   </header>
 
-  <p class="notice"><strong>Esempio, nessun dato reale.</strong> Gli stati qui sotto mostrano come lavora la squadra in un ciclo tipico. Nessun prezzo, trade o risultato è vero. La sala si collegherà al journal del backtest e poi alla demo MT5 Vantage.</p>
+  <p class="notice" id="notice"><strong>Esempio, nessun dato reale.</strong> Gli stati qui sotto mostrano come lavora la squadra in un ciclo tipico. Nessun prezzo, trade o risultato è vero. La sala si collegherà al journal del backtest e poi alla demo MT5 Vantage.</p>
 
   <div class="ticker" aria-label="Barra di stato">
-    <span>XAUUSD <b>in attesa di dati</b></span>
+    <span>XAUUSD <b id="tk-data">in attesa di dati</b></span>
     <span>MODALITÀ <b>demo · nessun ordine reale</b></span>
     <span>RISCHIO <b>profilo aggressivo 3%</b></span>
     <span>BLOCCO DD <b>30%</b></span>
@@ -103,10 +120,33 @@ footer { color: var(--muted); font-size: 12.5px; display: grid; gap: 4px; }
     <span class="step" id="step"></span>
   </div>
 
+  <section class="replay" id="replay" hidden aria-label="Replay del backtest">
+    <h2>Trade del giorno</h2>
+    <div class="dayctl">
+      <button id="prev-day" aria-label="Giorno precedente">◀</button>
+      <select id="day" aria-label="Giorno del backtest"></select>
+      <button id="next-day" aria-label="Giorno successivo">▶</button>
+    </div>
+    <div class="trades" id="trades"></div>
+    <div class="chartbox" id="chartbox" hidden>
+      <canvas id="chart" aria-label="Grafico M5 del trade selezionato"></canvas>
+      <div class="legend">
+        <span><i style="background:rgba(99,182,125,.35)"></i>zona domanda</span>
+        <span><i style="background:rgba(222,106,82,.35)"></i>zona offerta</span>
+        <span><i style="background:rgba(116,166,214,.45)"></i>FVG invertito</span>
+        <span><i style="background:var(--gold)"></i>entrata</span>
+        <span><i style="background:var(--bad)"></i>stop</span>
+        <span><i style="background:var(--ok)"></i>target</span>
+        <span>A armato · R rottura · E entrata · X uscita</span>
+      </div>
+    </div>
+  </section>
+
   <section class="roster" id="roster" aria-label="Squadra"></section>
 
   <footer>
     <span>Le decisioni di trading sono regole fisse e testate, non scelte di un modello AI.</span>
+    <span>Il replay mostra il backtest della variante e del profilo scelti in <code>config/default.yaml</code>, sui dati usati per scrivere le regole.</span>
     <span>Codice: <code>src/adamantem/</code> · strategia: <code>docs/STRATEGY.md</code> · rischio: <code>docs/RISK.md</code></span>
   </footer>
 </div>
@@ -141,7 +181,10 @@ const DAY = [
 ];
 
 const state = Object.fromEntries(BOTS.map(b => [b.id, ["idle", "In attesa del primo ciclo."]]));
+let steps = DAY;
 let stepIndex = -1;
+let mode = "example";
+let replay = null;
 let selected = "sniper";
 let playing = true;
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -203,17 +246,20 @@ function render() {
   const below = b.y < 60;
   bubble.classList.toggle("below", below);
   bubble.style.top = ((below ? b.y + 9 : b.y - 13) / H * 100) + "%";
-  const step = DAY[Math.max(stepIndex, 0)];
-  document.getElementById("clock").textContent = step.t + " UTC";
-  document.getElementById("step").textContent = `Passo ${stepIndex + 1} di ${DAY.length} · esempio`;
+  const step = steps[Math.max(stepIndex, 0)];
+  document.getElementById("clock").textContent = step ? step.t + " UTC" : "--:-- UTC";
+  document.getElementById("step").textContent = steps.length
+    ? `Evento ${stepIndex + 1} di ${steps.length} · ${mode === "example" ? "esempio" : "backtest " + daySel.value}`
+    : "Nessun evento";
 }
 
 function select(id) { selected = id; render(); }
 
 function advance() {
-  stepIndex = (stepIndex + 1) % DAY.length;
+  if (!steps.length) return render();
+  stepIndex = (stepIndex + 1) % steps.length;
   if (stepIndex === 0) for (const b of BOTS) state[b.id] = ["idle", "In attesa del primo ciclo."];
-  const changes = DAY[stepIndex].s;
+  const changes = steps[stepIndex].s;
   for (const id in changes) state[id] = changes[id];
   const ids = Object.keys(changes);
   const busy = ids.find(id => changes[id][0] === "work" || changes[id][0] === "bad")
@@ -308,7 +354,7 @@ function frame(ts) {
   for (const b of BOTS) drawDesk(b, t);
   if (playing) {
     acc += ts - last;
-    if (acc > 2600) { acc = 0; advance(); }
+    if (acc > (mode === "example" ? 2600 : 1700)) { acc = 0; advance(); }
   }
   last = ts;
   requestAnimationFrame(frame);
@@ -320,7 +366,162 @@ document.getElementById("play").addEventListener("click", e => {
 });
 document.getElementById("next").addEventListener("click", () => { advance(); acc = 0; });
 
-addEventListener("resize", render);
+// ---------- replay of a real backtest run ----------
+const daySel = document.getElementById("day");
+const hhmm = m => new Date(m * 60000).toISOString().slice(11, 16);
+const REASON = { stop: "stop", target: "target", time: "6 ore", session: "fine sessione" };
+
+function setMode(m) {
+  mode = m;
+  document.getElementById("mode-example").setAttribute("aria-pressed", m === "example");
+  document.getElementById("mode-live").setAttribute("aria-pressed", m === "replay");
+  document.getElementById("replay").hidden = m !== "replay";
+  const notice = document.getElementById("notice");
+  if (m === "example") {
+    notice.innerHTML = "<strong>Esempio, nessun dato reale.</strong> Gli stati qui sotto mostrano come lavora la squadra in un ciclo tipico. Nessun prezzo, trade o risultato è vero.";
+    steps = DAY;
+  } else {
+    notice.innerHTML = `<strong>Replay del backtest (in-sample, non validato).</strong> ${replay.label}. Prezzi Dukascopy, non Vantage. Generato ${replay.meta.generated}.`;
+    loadDay(daySel.value);
+  }
+  stepIndex = -1; acc = 0;
+  for (const b of BOTS) state[b.id] = ["idle", "In attesa del primo ciclo."];
+  advance();
+}
+
+function loadDay(day) {
+  const evs = replay.days[day] || [];
+  steps = evs.map(([m, bot, st, text]) => ({ t: hhmm(m), s: { [bot]: [st, text] } }));
+  stepIndex = -1;
+  for (const b of BOTS) state[b.id] = ["idle", "In attesa del primo ciclo."];
+  document.getElementById("tk-data").textContent = "backtest " + day;
+  renderTrades(day);
+}
+
+function renderTrades(day) {
+  const box = document.getElementById("trades");
+  const list = replay.trades.filter(t => t.day === day);
+  box.innerHTML = "";
+  document.getElementById("chartbox").hidden = true;
+  if (!list.length) { box.innerHTML = '<p class="empty">Nessun trade eseguito in questo giorno: solo setup e rifiuti.</p>'; return; }
+  for (const t of list) {
+    const b = document.createElement("button");
+    b.className = "trade";
+    const cls = t.r > 0 ? "s-ok" : "s-bad";
+    b.innerHTML = `<span class="side ${t.side === "long" ? "s-ok" : "s-bad"}">${t.side === "long" ? "LONG" : "SHORT"}</span>
+      <span>${hhmm(t.marks.fill)}–${hhmm(t.marks.exit)} · ${t.context} · uscita ${REASON[t.reason]}</span>
+      <span class="r ${cls}">${t.r > 0 ? "+" : ""}${t.r.toFixed(2)}R</span>
+      <span class="detail">entrata ${t.entry} · stop ${t.stop} · target ${t.target} · ${t.volume.toFixed(2)} lotti · $${t.pnl > 0 ? "+" : ""}${t.pnl} · conto $${t.equity}</span>`;
+    b.addEventListener("click", () => {
+      box.querySelectorAll(".trade").forEach(x => x.classList.remove("sel"));
+      b.classList.add("sel");
+      drawTrade(t);
+    });
+    box.appendChild(b);
+  }
+  box.querySelector(".trade").click();
+}
+
+function drawTrade(t) {
+  const boxEl = document.getElementById("chartbox");
+  boxEl.hidden = false;
+  const cv = document.getElementById("chart");
+  const dpr = window.devicePixelRatio || 1;
+  const cw = cv.clientWidth, chh = cv.clientHeight;
+  cv.width = cw * dpr; cv.height = chh * dpr;
+  const g = cv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, cw, chh);
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue("--" + n).trim();
+  const padL = 6, padR = 58, padT = 24, padB = 18;
+  const bars = t.bars;
+  let lo = Math.min(...bars.map(b => b[3]), t.stop, t.target);
+  let hi = Math.max(...bars.map(b => b[2]), t.stop, t.target);
+  const span = hi - lo; lo -= span * 0.05; hi += span * 0.05;
+  const y = p => padT + (hi - p) / (hi - lo) * (chh - padT - padB);
+  const step = (cw - padL - padR) / bars.length;
+  const xOf = m => { const i = bars.findIndex(b => b[0] >= m); return padL + (i < 0 ? bars.length - 0.5 : i + 0.5) * step; };
+  const x0 = padL, x1 = cw - padR;
+  // grid + price labels
+  g.font = "11px IBM Plex Mono, monospace";
+  g.fillStyle = css("muted"); g.strokeStyle = "#232a33"; g.lineWidth = 1;
+  for (let k = 0; k <= 4; k++) {
+    const p = lo + (hi - lo) * k / 4, yy = Math.round(y(p)) + 0.5;
+    g.beginPath(); g.moveTo(x0, yy); g.lineTo(x1, yy); g.stroke();
+    g.fillText(p.toFixed(2), x1 + 4, yy + 4);
+  }
+  // zones
+  for (const z of t.zones) {
+    g.fillStyle = z.side === "demand" ? "rgba(99,182,125,.18)" : "rgba(222,106,82,.18)";
+    const ya = y(Math.min(z.high, hi)), yb = y(Math.max(z.low, lo));
+    if (yb > ya) { g.fillRect(x0, ya, x1 - x0, yb - ya); g.fillStyle = css("muted"); g.fillText(`zona ${z.tf}`, x0 + 4, ya + 12); }
+  }
+  // inverted FVG from its creation to exit
+  if (t.fvg[0] != null) {
+    const xa = xOf(t.marks.fvg) - step / 2, xb = xOf(t.marks.exit);
+    g.fillStyle = "rgba(116,166,214,.28)";
+    g.fillRect(xa, y(t.fvg[1]), xb - xa, Math.max(1, y(t.fvg[0]) - y(t.fvg[1])));
+  }
+  // candles
+  for (let i = 0; i < bars.length; i++) {
+    const [, o, h, l, c] = bars[i];
+    const cx = padL + (i + 0.5) * step;
+    const up = c >= o;
+    g.strokeStyle = g.fillStyle = up ? "#7fb08c" : "#c56a5a";
+    g.beginPath(); g.moveTo(Math.round(cx) + 0.5, y(h)); g.lineTo(Math.round(cx) + 0.5, y(l)); g.stroke();
+    const bw = Math.max(1, step * 0.6);
+    g.fillRect(cx - bw / 2, y(Math.max(o, c)), bw, Math.max(1, Math.abs(y(o) - y(c))));
+  }
+  // entry / stop / target from fill to exit
+  const xf = xOf(t.marks.fill) - step / 2, xe = xOf(t.marks.exit) + step / 2;
+  for (const [p, col, name] of [[t.entry, css("gold"), "E"], [t.stop, css("bad"), "SL"], [t.target, css("ok"), "TP"]]) {
+    g.strokeStyle = col; g.lineWidth = 1.5; g.setLineDash(name === "E" ? [] : [4, 3]);
+    g.beginPath(); g.moveTo(xf, y(p)); g.lineTo(xe, y(p)); g.stroke();
+    g.setLineDash([]); g.fillStyle = col; g.fillText(name, xe + 3, y(p) + 4);
+  }
+  // event marks
+  g.lineWidth = 1;
+  for (const [k, lab, row] of [["arm", "A", 0], ["break", "R", 1], ["fill", "E", 0], ["exit", "X", 1]]) {
+    if (t.marks[k] == null) continue;
+    const xx = Math.round(xOf(t.marks[k])) + 0.5;
+    g.strokeStyle = "rgba(236,229,211,.25)"; g.setLineDash([2, 3]);
+    g.beginPath(); g.moveTo(xx, padT); g.lineTo(xx, chh - padB); g.stroke(); g.setLineDash([]);
+    g.fillStyle = css("fg"); g.fillText(lab, xx - 3, row ? 9 : 17);
+  }
+  g.fillStyle = css("muted");
+  g.fillText(hhmm(bars[0][0]), x0, chh - 4);
+  const lastT = hhmm(bars[bars.length - 1][0]);
+  g.fillText(lastT, x1 - g.measureText(lastT).width, chh - 4);
+}
+
+document.getElementById("mode-example").addEventListener("click", () => setMode("example"));
+document.getElementById("mode-live").addEventListener("click", () => replay && setMode("replay"));
+daySel.addEventListener("change", () => { loadDay(daySel.value); advance(); });
+function shiftDay(d) {
+  const i = Math.min(Math.max(daySel.selectedIndex + d, 0), daySel.options.length - 1);
+  daySel.selectedIndex = i; loadDay(daySel.value); advance();
+}
+document.getElementById("prev-day").addEventListener("click", () => shiftDay(-1));
+document.getElementById("next-day").addEventListener("click", () => shiftDay(1));
+
+fetch("replay.json").then(r => r.ok ? r.json() : Promise.reject(r.status)).then(data => {
+  replay = data;
+  const days = [...new Set([...Object.keys(data.days), ...data.trades.map(t => t.day)])].sort();
+  for (const d of days) {
+    const n = data.trades.filter(t => t.day === d).length;
+    daySel.add(new Option(`${d} · ${n} trade`, d));
+  }
+  const firstTrade = data.trades.length ? data.trades[0].day : days[0];
+  if (firstTrade) daySel.value = firstTrade;
+  const btn = document.getElementById("mode-live");
+  btn.disabled = false; btn.title = ""; btn.textContent = "Replay backtest";
+}).catch(() => { /* no published backtest yet: example mode only */ });
+
+addEventListener("resize", () => {
+  render();
+  const sel = document.querySelector(".trade.sel");
+  if (sel && !document.getElementById("chartbox").hidden) sel.click();
+});
 advance();
 requestAnimationFrame(frame);
 </script>

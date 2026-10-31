@@ -12,6 +12,7 @@ import yaml
 from adamantem.backtest.engine import VARIANTS, run_backtest
 from adamantem.backtest.market import build_market
 from adamantem.backtest.metrics import breakdown, summarize, trades_frame
+from adamantem.backtest.replay import build_replay, write_replay
 from adamantem.data.dukascopy import IncompleteDownload, download_m1
 from adamantem.data.quality import check_m1
 from adamantem.risk.sizing import SymbolSpec
@@ -130,6 +131,18 @@ def backtest(args: argparse.Namespace) -> Path:
         lines += ["Pipeline counters:", "", "```"]
         lines += [f"{k}: {v}" for k, v in sorted(counters.items())]
         lines += ["```", ""]
+    # Replay of the configured variant/profile with every bot action recorded.
+    var, prof_name = cfg["strategy"]["variant"], cfg["risk"]["profile"]
+    res = run_backtest(
+        mk, cfg["strategy"], cfg["scanner"], cfg["risk"], cfg["risk"]["profiles"][prof_name],
+        var, spec, start_equity=args.equity, extra_spread=0.0, record_events=True,
+    )
+    label = f"{var} · {prof_name} · spread Dukascopy · {start} → {end}"
+    meta = {"variant": var, "profile": prof_name, "start": str(start), "end": str(end),
+            "equity": args.equity, "in_sample": True,
+            "generated": f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC"}
+    write_replay(out / "replay.json", build_replay(mk, res, label, meta))
+
     report = out / f"backtest_{stamp}.md"
     report.write_text("\n".join(lines))
     print("\n".join(lines[: lines.index("## Detail per run")]))

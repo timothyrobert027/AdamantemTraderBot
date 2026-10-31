@@ -15,7 +15,7 @@ on:
         default: "2025-11-01"
 
 permissions:
-  contents: read
+  contents: write  # only used to publish results to the backtest-results branch
 
 jobs:
   backtest:
@@ -52,3 +52,15 @@ jobs:
         with:
           name: backtest-report
           path: reports/
+      - name: Publish results to the backtest-results branch
+        if: success()
+        run: |
+          mkdir -p "$RUNNER_TEMP/results"
+          cp reports/replay.json "$RUNNER_TEMP/results/"
+          cp "$(ls -t reports/backtest_*.md | head -1)" "$RUNNER_TEMP/results/REPORT.md"
+          cd "$RUNNER_TEMP/results"
+          git init -q -b backtest-results
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add . && git commit -qm "Backtest results from run ${{ github.run_id }}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" backtest-results
