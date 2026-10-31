@@ -35,6 +35,7 @@ jobs:
       - run: >
           python -m adamantem.app.cli backtest
           --start "${{ inputs.start }}" --end "${{ inputs.end }}"
+          --download-budget-min 70
       - name: Save downloaded data (even if the run failed)
         if: always()
         uses: actions/cache/save@v4
@@ -42,10 +43,10 @@ jobs:
           path: data/raw/dukascopy
           key: dukascopy-xauusd-${{ github.run_id }}
       - name: Publish summary
-        if: success()
+        if: always()
         run: |
-          f=$(ls -t reports/backtest_*.md | head -1)
-          cat "$f" >> "$GITHUB_STEP_SUMMARY"
+          f=$(ls -t reports/*.md 2>/dev/null | head -1)
+          if [ -n "$f" ]; then cat "$f" >> "$GITHUB_STEP_SUMMARY"; fi
       - uses: actions/upload-artifact@v4
         if: success()
         with:

@@ -14,7 +14,6 @@ import struct
 import time
 import urllib.error
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -24,6 +23,14 @@ import pandas as pd
 BASE_URL = "https://datafeed.dukascopy.com/datafeed"
 PRICE_DIVISOR = {"XAUUSD": 1000.0}
 RECORD = struct.Struct(">5if")
+
+
+class IncompleteDownload(RuntimeError):
+    """Raised when the download stops early; files fetched so far stay in the cache."""
+
+    def __init__(self, done: int, total: int, reason: str):
+        super().__init__(f"downloaded {done}/{total} day files, stopped: {reason}")
+        self.done, self.total, self.reason = done, total, reason
 
 
 def day_url(symbol: str, day: date, side: str) -> str:
@@ -56,7 +63,7 @@ def parse_day(raw: bytes, day: date, divisor: float) -> pd.DataFrame:
     return frame[frame["volume"] > 0]
 
 
-def _fetch(url: str, dest: Path, retries: int = 8) -> bytes:
+def _fetch(url: str, dest: Path, retries: int = 4) -> bytes:
     """Fetch one file with caching; backs off on rate limiting (HTTP 429/503) and timeouts."""
     if dest.exists():
         return dest.read_bytes()
@@ -64,7 +71,7 @@ def _fetch(url: str, dest: Path, retries: int = 8) -> bytes:
     for attempt in range(retries):
         wait = min(2 ** (attempt + 1), 60)
         try:
-            with urllib.request.urlopen(request, timeout=30) as resp:
+            with urllib.request.urlopen(request, timeout=20) as resp:
                 raw = resp.read()
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(raw)
@@ -85,26 +92,50 @@ def _fetch(url: str, dest: Path, retries: int = 8) -> bytes:
 
 
 def download_m1(
-    symbol: str, start: date, end: date, cache_dir: Path, workers: int = 3
+    symbol: str,
+    start: date,
+    end: date,
+    cache_dir: Path,
+    budget_s: float | None = None,
+    pause_s: float = 0.5,
+    max_consecutive_failures: int = 5,
 ) -> pd.DataFrame:
-    """Return M1 bars with bid_* and ask_* OHLC columns for [start, end)."""
+    """Return M1 bars with bid_* and ask_* OHLC columns for [start, end).
+
+    Files are fetched one at a time with a pause, to respect the server's rate limits.
+    Raises ``IncompleteDownload`` when the time budget runs out or the server keeps
+    failing; everything fetched so far is cached, so a later call resumes.
+    """
     divisor = PRICE_DIVISOR[symbol]
     days = [start + timedelta(d) for d in range((end - start).days)]
     days = [d for d in days if d.weekday() != 5]  # Saturday has no gold trading
-
-    def load(args: tuple[date, str]) -> pd.DataFrame:
-        day, side = args
-        dest = cache_dir / symbol / f"{day:%Y%m%d}_{side}.bi5"
-        return parse_day(_fetch(day_url(symbol, day, side), dest), day, divisor)
-
     jobs = [(d, s) for d in days for s in ("BID", "ASK")]
-    with ThreadPoolExecutor(workers) as pool:
-        frames = []
-        for n, frame in enumerate(pool.map(load, jobs), 1):
-            frames.append(frame)
-            if n % 200 == 0:
-                print(f"downloaded {n}/{len(jobs)} day files", flush=True)
-    bid = pd.concat(frames[0::2])
-    ask = pd.concat(frames[1::2])
+    t0 = time.monotonic()
+    failures = 0
+    frames = []
+    for n, (day, side) in enumerate(jobs, 1):
+        dest = cache_dir / symbol / f"{day:%Y%m%d}_{side}.bi5"
+        if not dest.exists():
+            if budget_s is not None and time.monotonic() - t0 > budget_s:
+                raise IncompleteDownload(len(frames), len(jobs), "time budget reached")
+            try:
+                _fetch(day_url(symbol, day, side), dest)
+                failures = 0
+            except (urllib.error.URLError, TimeoutError) as exc:
+                failures += 1
+                if failures >= max_consecutive_failures:
+                    raise IncompleteDownload(
+                        len(frames), len(jobs), f"server not responding ({exc})"
+                    ) from exc
+                continue
+            time.sleep(pause_s)
+        raw = dest.read_bytes() if dest.exists() else b""
+        frames.append((side, parse_day(raw, day, divisor)))
+        if n % 200 == 0:
+            print(f"downloaded {n}/{len(jobs)} day files", flush=True)
+    if len(frames) < len(jobs):
+        raise IncompleteDownload(len(frames), len(jobs), "some files failed; re-run to retry")
+    bid = pd.concat([f for side, f in frames if side == "BID"])
+    ask = pd.concat([f for side, f in frames if side == "ASK"])
     m1 = bid.add_prefix("bid_").join(ask.drop(columns="volume").add_prefix("ask_"), how="inner")
     return m1.rename(columns={"bid_volume": "volume"}).sort_index()

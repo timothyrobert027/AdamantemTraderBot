@@ -12,7 +12,7 @@ import yaml
 from adamantem.backtest.engine import VARIANTS, run_backtest
 from adamantem.backtest.market import build_market
 from adamantem.backtest.metrics import breakdown, summarize, trades_frame
-from adamantem.data.dukascopy import download_m1
+from adamantem.data.dukascopy import IncompleteDownload, download_m1
 from adamantem.data.quality import check_m1
 from adamantem.risk.sizing import SymbolSpec
 
@@ -26,11 +26,11 @@ def load_config(path: Path) -> dict:
     return cfg
 
 
-def load_m1(start: date, end: date, cache: Path) -> pd.DataFrame:
+def load_m1(start: date, end: date, cache: Path, budget_s: float | None = None) -> pd.DataFrame:
     key = cache / f"XAUUSD_M1_{start:%Y%m%d}_{end:%Y%m%d}.parquet"
     if key.exists():
         return pd.read_parquet(key)
-    m1 = download_m1("XAUUSD", start, end, cache / "bi5")
+    m1 = download_m1("XAUUSD", start, end, cache / "bi5", budget_s=budget_s)
     key.parent.mkdir(parents=True, exist_ok=True)
     m1.to_parquet(key)
     return m1
@@ -43,14 +43,26 @@ def _fmt(x) -> str:
 def backtest(args: argparse.Namespace) -> Path:
     cfg = load_config(Path(args.config))
     start, end = date.fromisoformat(args.start), date.fromisoformat(args.end)
-    m1 = load_m1(start, end, Path(args.cache))
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    budget = args.download_budget_min * 60 if args.download_budget_min else None
+    try:
+        m1 = load_m1(start, end, Path(args.cache), budget)
+    except IncompleteDownload as exc:
+        pct = 100 * exc.done / exc.total
+        msg = (
+            "# Backtest not run yet: data download incomplete\n\n"
+            f"Downloaded {exc.done} of {exc.total} day files ({pct:.0f}%). Reason: {exc.reason}.\n\n"
+            "The files downloaded so far are cached. Run the workflow again to continue.\n"
+        )
+        (out / "download_status.md").write_text(msg)
+        print(msg)
+        raise SystemExit(3) from None
     q = check_m1(m1)
     if not q.ok:
         raise SystemExit(f"Data quality check failed: {q}")
     mk = build_market(m1, cfg["strategy"], cfg["scanner"])
     spec = SymbolSpec()
-    out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
 
     rows, details = [], []
@@ -134,6 +146,7 @@ def main() -> None:
     bt.add_argument("--config", default=str(ROOT / "config" / "default.yaml"))
     bt.add_argument("--cache", default=str(ROOT / "data" / "raw" / "dukascopy"))
     bt.add_argument("--out", default=str(ROOT / "reports"))
+    bt.add_argument("--download-budget-min", type=float, default=None)
     args = parser.parse_args()
     if args.cmd == "backtest":
         backtest(args)
