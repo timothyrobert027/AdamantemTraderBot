@@ -39,3 +39,28 @@ check is one frozen configuration on data that was never looked at.
 - **Pass:** the configuration may move to the MT5 demo on the Windows VPS, after re-running it
   on Vantage's own history and spreads. Passing on one year of HistData is evidence, not proof.
 - **Fail:** the configuration does not go to demo. The result is reported as it is.
+
+---
+
+## Result (run 41205906028, 2026-10-31) — appended after the run, criteria unchanged
+
+**Verdict: PASSED** on the primary run (standard profile, $0.25 spread). Data available:
+2025-11-01 → 2026-10-23 (HistData had not yet published the last week of October).
+
+| Criterion | Threshold | Holdout |
+|---|---|---|
+| Trades | ≥ 30 | 45 |
+| Average R | ≥ +0.10 | +0.43 |
+| Profit factor | ≥ 1.15 | 1.92 |
+| Kill switch | not triggered | not triggered (max DD 9.7%) |
+
+Caveats recorded with the result:
+- t-statistic of mean R = 1.78 (one-sided p ≈ 0.04): positive, but 45 trades is a small sample.
+- Concentration: order blocks +0.79R (23 trades) vs FVG +0.06R (22); shorts +0.84R vs longs
+  +0.11R; March 2026 (3 trades) produced about 57% of the net profit.
+- With the stress spread ($0.45) the holdout stayed positive (34 trades, +0.43R), unlike the
+  in-sample period where it fell to ~0R: gold volatility in the holdout year was high.
+- Data is HistData with an assumed constant spread, not Vantage's feed.
+
+Next step per this document: re-run the frozen configuration on Vantage's own history and
+spreads (Windows VPS), then MT5 demo.
