@@ -22,3 +22,9 @@ Each stage ends with a **results review**. The next stage starts only after you 
 4. Whether you can get temporary access to any Windows PC for an early read-only symbol spec
    export.
 5. ~~Context~~ → H4 and H1 zones; setups without a zone allowed, tagged `NONE` (chosen).
+
+## Change of order (requested)
+An **exploratory in-sample backtest** was brought forward, ahead of Stages 1-5, at your
+request. It is code that works but has not been reviewed stage by stage. Its results do NOT
+replace Stage 6 validation (walk-forward, Monte Carlo, untouched holdout). Run it from the
+GitHub app: Actions -> "Backtest (exploratory, in-sample)" -> Run workflow.

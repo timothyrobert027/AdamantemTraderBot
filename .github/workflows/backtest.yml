@@ -1,0 +1,44 @@
+name: Backtest (exploratory, in-sample)
+
+# Manual run only: Actions tab -> "Backtest" -> Run workflow.
+# Downloads Dukascopy XAUUSD M1 bid/ask data and runs every variant/profile/spread scenario.
+# The report appears in the run summary and as a downloadable artifact.
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "Start date (YYYY-MM-DD)"
+        default: "2021-11-01"
+      end:
+        description: "End date, exclusive (the holdout after it stays untouched)"
+        default: "2025-11-01"
+
+permissions:
+  contents: read
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: data/raw/dukascopy
+          key: dukascopy-xauusd-${{ inputs.start }}-${{ inputs.end }}
+      - run: pip install -e .
+      - run: >
+          python -m adamantem.app.cli backtest
+          --start "${{ inputs.start }}" --end "${{ inputs.end }}"
+      - name: Publish summary
+        run: |
+          f=$(ls -t reports/backtest_*.md | head -1)
+          cat "$f" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backtest-report
+          path: reports/
