@@ -22,14 +22,24 @@ No parameter may change during the test.
 5. Places at most one limit order, with stop loss and take profit attached server-side.
 Everything is written to `state/journal.jsonl`; `state/heartbeat.txt` shows the last cycle.
 
-## Evaluation (decided now)
-- Duration: at least **3 months** and at least **30 closed trades**, whichever is later.
-- Compare with the backtest: average R, win rate, trades per month, real spread vs the $0.25
-  assumption, slippage on stops, fills per order.
-- **Stop early** if the kill switch fires, or if after 30 trades the average R is below 0.
-- Continue past the minimum only while average R ≥ +0.10 and profit factor ≥ 1.15.
-- Known limitation from research: the edge appeared only in high-volatility years
-  (2024-2026); in quiet markets the bot is expected to trade rarely.
+## Evaluation (decided now; the owner set the demo to at most 2 weeks)
+Two weeks is about 10 trading days. The validated configuration averaged roughly 4 trades a
+month in the holdout year, so the demo will produce only a handful of trades: far too few to
+judge profitability. The 2-week demo is therefore a **technical acceptance test**:
+
+- [ ] The bot runs 10 trading days without unhandled errors (`state/journal.jsonl`).
+- [ ] Data is never stale for more than one cycle during market hours.
+- [ ] Every order sent has stop loss and take profit on the server, the correct volume and the
+      magic number; expired, cancelled and filled orders are handled as in the backtest.
+- [ ] Positions are closed by the 6-hour time stop and the session exit when due.
+- [ ] After a restart the bot reconciles open orders/positions and keeps the kill switch.
+- [ ] Measured Vantage spread and stop slippage are recorded and compared with the $0.25
+      assumption; the backtest is re-run on the exported Vantage history.
+- [ ] If any trade happens: its entry, stop and target match what the backtest engine would
+      have done on the same bars.
+
+Performance can only be judged over many more trades (at least 30). That evidence will come
+slowly whichever account the bot runs on.
 
 Real-money trading is outside this project's scope; it would need a separate written
 decision by the account owner after this evaluation.
