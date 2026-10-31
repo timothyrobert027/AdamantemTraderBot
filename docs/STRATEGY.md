@@ -1,63 +1,102 @@
-# Strategy v1 — "H1 Trend / M15 Pullback" (hypothesis, not yet validated)
+# Strategy v1 — "Supply/Demand Zones + Volatility" (hypothesis, not yet validated)
 
-This strategy is a **hypothesis to test**. It has **no** backtest results yet. Parameters
-are reasonable starting values and are not optimised. Their effect is measured only within
-the validation protocol below.
+This strategy is a **hypothesis to test**. It has **no** backtest results yet. Every rule
+below is mechanical: two people (or two runs of the code) given the same bars will draw the
+same zones and take the same trades.
 
-## Rationale
-Gold tends to trend in sessions driven by USD and real-rate news. Buying a pullback inside
-an established higher-timeframe trend gives a defined invalidation point, so the stop is
-objective and sizing is clean. That property matters most for the risk engine.
+## Idea
+Institutional order flow leaves footprints: a short **base** (price pauses), then a strong
+**impulse** away from it. The base marks unfilled orders. On the **first return** to the
+base, price often reacts again. A demand zone acts as support and a supply zone as
+resistance. Volatility (ATR) normalises every size and distance, so the rules adapt
+automatically when gold gets quiet or wild.
 
-## Rules (evaluated only on a CLOSED M15 bar when the scanner says `tradeable`)
+## 1. Zone detection (H1, closed bars only)
 
-**Trend (H1, last closed bar)**
-- Up-trend: `EMA50 > EMA200` and `close > EMA50`.
-- Down-trend: `EMA50 < EMA200` and `close < EMA50`.
+Let `ATR = ATR14(H1)` measured at the base.
 
-**Long entry (M15)**
-1. H1 up-trend.
-2. Pullback: within the last 6 M15 bars, at least one `low ≤ EMA20(M15)`.
-3. Momentum reset: `RSI14(M15)` was `< 40` within the last 6 bars and the current bar closes
-   with `RSI14 ≥ 40` (crossing back up).
-4. Trigger: current bar `close > open` and `close > EMA20(M15)`.
-5. Enter at market on the next bar's open (in the backtest: the next bar's open plus the
-   modelled spread and slippage).
+**Base:** 1–3 consecutive candles, each with `range ≤ 1.0 × ATR` and `body ≤ 0.5 × range`.
 
-**Short entry:** the exact mirror (down-trend, `high ≥ EMA20`, RSI `> 60` then `≤ 60`,
-bearish close below EMA20).
+**Impulse (leg-out):** the 1–2 candles right after the base, together satisfying:
+- Move from the base edge to the impulse close `≥ 2.0 × ATR`.
+- Each impulse candle has `body ≥ 0.6 × range`, in the same direction.
+- The close is beyond the base: above the base high (demand) or below the base low (supply).
 
-**Exits (all set at entry; no discretionary changes)**
-- Stop loss: `entry ∓ 1.5 × ATR14(M15)`, widened if needed to respect the broker stops level.
-- Take profit: `entry ± 2.0 × (stop distance)`, i.e. 2R.
-- Time stop: close at market after 16 M15 bars (4 h) if neither SL nor TP was hit.
-- Session exit: close any open position at 20:30 UTC and before the Friday close.
-- No trailing stop, no partial closes in v1. With 0.01-lot positions, a partial close is
-  often impossible.
+**Zone boundaries:**
+- Demand: proximal = highest *body top* in the base; distal = lowest *low* in the base.
+- Supply: proximal = lowest *body bottom* in the base; distal = highest *high* in the base.
 
-**Frequency:** at most 3 entries per day, 1 open position at a time.
+**Zone validity (all required):**
+- Width `(proximal − distal) ≤ 1.0 × ATR`. A wider zone means the stop is too wide.
+- **Fresh:** price has not traded into the zone since it formed. Only the first retest is
+  traded.
+- Age ≤ 120 H1 bars (≈ 5 trading days).
+- Invalidated permanently once an H1 candle **closes** beyond the distal line.
 
-## Validation protocol (fixed in advance, before any results are seen)
+**Zone score (logged, used for ranking):**
+`score = impulse_size_in_ATR + (1 if base has 1 candle) − 0.01 × age_bars`.
+When two zones overlap, keep the higher-scoring one.
 
-1. **Data:** at least 4 years of M1 XAUUSD history, resampled. The last 12 months are held
-   out and untouched until the final test.
-2. **Costs:** spread taken from the data or a session profile, plus slippage of 0.5 × spread
-   on entries and stops, plus commission per account type. Swap is ignored because positions
-   close intraday.
-3. **Walk-forward:** 12-month in-sample / 3-month out-of-sample, rolling. Parameters may be
-   chosen only from a small grid: EMA20 ∈ {15, 20, 30}, SL ATR ∈ {1.25, 1.5, 2.0}, TP R ∈
-   {1.5, 2.0, 2.5}.
-4. **Acceptance criteria (all required on stitched OOS and then on the holdout):**
-   - ≥ 200 trades OOS.
-   - Expectancy ≥ +0.10 R per trade after costs.
-   - Profit factor ≥ 1.20.
-   - 95th-percentile Monte Carlo max drawdown ≤ 20% at the chosen risk per trade.
-   - Beats the random-entry baseline (same exits, same filters) at p < 0.05.
-   - Parameter plateau: neighbouring grid values keep expectancy > 0.
-5. **If the criteria fail,** the result is reported as a failure. The strategy is revised as
-   a new, separately logged hypothesis. Tests on the holdout are counted and reported.
+## 2. Volatility rules
+- **Regime gate:** trade only when ATR14(M15) is between its 30th and 95th percentile over the
+  last 60 days. Below that, moves are too small to pay the spread. Above it is news chaos.
+- **Every distance is in ATR units:** zone size, impulse size, stop buffer, spread limit.
+- **Expansion check:** the impulse that created the zone must have ATR14(H1) at or above its
+  20-bar median. A zone born in a dead market is ignored.
 
-## When ML would be allowed
-Only as a **filter** on v1 signals (meta-labelling), and only if, on walk-forward OOS, it
-improves expectancy by ≥ 0.05 R without dropping the trade count below 200. The comparison
-is made against the rule-only version on the same splits.
+## 3. Entry (M15, evaluated on a closed bar, scanner must say `tradeable`)
+
+**Long at a fresh demand zone:**
+1. The M15 bar trades into the zone: `low ≤ proximal`, and it doesn't close below distal.
+2. **Rejection:** the same bar or the next one closes **back above proximal** with
+   `close > open` and lower wick `≥ 40%` of the bar range.
+3. **Room to run:** the distance to the nearest opposing **supply** zone (proximal) is
+   `≥ 2.0R`. If that zone is closer, skip the trade.
+4. Enter at market on the next bar's open.
+
+**Short at a fresh supply zone:** the exact mirror.
+
+Optional trend filter (tested both **with** and **without**): trade demand only when H1 close
+> EMA200(H1), and supply only when it is below.
+
+## 4. Exits (fixed at entry)
+- **Stop loss:** `distal ∓ 0.25 × ATR14(M15)` (beyond the zone plus a volatility buffer),
+  widened if needed to the broker stops level.
+- **Take profit:** the nearest opposing zone's proximal, capped at `3.0R`. If no opposing
+  zone exists, use `2.5R`.
+- **Time stop:** 24 M15 bars (6 h).
+- **Session/weekend exit:** flat at 20:30 UTC and before the Friday close.
+- One trade per zone, ever.
+
+## 5. Variants tested (pre-registered; at most 4 so the result stays honest)
+| ID | Entry | Trend filter |
+|---|---|---|
+| SD-A | Rejection close (above) | Off |
+| SD-B | Rejection close | On |
+| SD-C | Limit order at proximal (no confirmation) | Off |
+| SD-D | Limit order at proximal | On |
+
+Because 4 variants are tested, the acceptance bar applies to the best variant *after* a
+multiple-testing adjustment (Bonferroni: p < 0.0125 against the random baseline).
+
+## 6. Validation protocol (fixed before any results are seen)
+1. **Data:** ≥ 4 years of M1 XAUUSD resampled to M15/H1. The last 12 months are a holdout,
+   untouched until the end.
+2. **Costs:** spread from the data or a session profile, plus slippage of 0.5 × spread on
+   entries and stops, plus commission per account type.
+3. **Walk-forward:** 12-month in-sample / 3-month out-of-sample, rolling. A small parameter grid
+   only: base-range ∈ {0.8, 1.0, 1.2} ATR, impulse ∈ {1.5, 2.0, 2.5} ATR, SL buffer ∈ {0.1,
+   0.25, 0.5} ATR.
+4. **Acceptance (stitched out-of-sample, then holdout):** ≥ 150 trades; expectancy ≥ +0.15R after
+   costs; profit factor ≥ 1.25; the 95th-percentile Monte Carlo max drawdown fits the chosen
+   risk profile's kill switch; beats random entry (same exits) at the adjusted p-value; the
+   parameter neighbourhood stays profitable.
+5. **A failure is reported as a failure.** No deployment follows from it.
+
+Higher risk per trade does **not** make the strategy's edge any larger. It only makes gains
+*and* drawdowns bigger. The strategy has to show an edge at 1R first, before any risk profile
+matters.
+
+## 7. When ML would be allowed
+Only as a ranking/filter on zones (e.g. which zones to take), and only if it lifts walk-forward
+out-of-sample expectancy by ≥ 0.05R versus the score-based rules on the same splits.

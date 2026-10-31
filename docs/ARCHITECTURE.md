@@ -46,7 +46,7 @@ document makes no claims about performance.
 ### Data flow (one decision cycle, every closed M15 bar)
 
 1. `data` delivers closed bars (M15 and H1) plus the current tick/spread.
-2. `indicators` computes EMA, ATR, RSI and other features over the bars.
+2. `indicators` computes ATR, EMA and percentiles; `strategy.zones` maintains the live set of supply/demand zones.
 3. `scanner` scores the market state: session, spread, volatility regime, trend regime,
    news blackout and data freshness. It returns `TRADEABLE` or a list of blocking reasons.
 4. `strategy` turns a tradeable state into a `Signal` (side, entry, SL, TP, time stop),
@@ -78,14 +78,16 @@ Package root: `src/adamantem/`
 | | `quality.py` | Gap, duplicate, outlier, weekend and stale-bar checks; returns a quality report. |
 | | `resample.py` | Tick → M1 → M15/H1 resampling with explicit bar-close semantics. |
 | | `store.py` | Local Parquet cache keyed by source/symbol/timeframe. |
-| `indicators` | `ta.py` | Vectorised EMA, ATR (Wilder), RSI (Wilder), rolling high/low. Tested against reference values. |
+| `indicators` | `ta.py` | Vectorised EMA, ATR (Wilder), rolling percentile, rolling high/low. Tested against reference values. |
 | `scanner` | `filters.py` | Independent filters: session, spread, volatility regime, trend regime, news blackout, rollover window, data freshness. |
 | | `scanner.py` | Combines the filters into a `MarketState` with reasons. Has no trading logic. |
 | `strategy` | `base.py` | `Strategy` protocol: `on_bar(state, history) -> Signal | None`. |
-| | `trend_pullback.py` | The v1 strategy (see `STRATEGY.md`). |
+| | `zones.py` | Supply/demand zone detection (base + impulse), validity, freshness, invalidation and scoring. Pure functions over H1 bars. |
+| | `supply_demand.py` | The v1 strategy: entry at a fresh zone with volatility gating, ATR stops, opposing-zone targets (see `STRATEGY.md`). |
 | | `baselines.py` | Random-entry and buy-and-hold baselines that use the same exits, as controls. |
 | `risk` | `sizing.py` | Fixed-fractional sizing from `SymbolSpec` (tick value, tick size, volume min/step). Rounds **down** and never up. |
 | | `limits.py` | Daily, weekly and max-drawdown limits, max positions, max trades/day, loss streak, effective leverage cap. |
+| | `profiles.py` | `standard` / `aggressive` profiles and the hard ceilings no config can exceed. |
 | | `engine.py` | `RiskEngine.evaluate(signal, account, spec) -> OrderIntent | Rejection`. |
 | `execution` | `broker.py` | `Broker` protocol: `account()`, `positions()`, `submit(intent)`, `modify()`, `close()`. |
 | | `sim_broker.py` | Simulated fills with spread, slippage and commission. Used by the backtest and cloud paper mode. |

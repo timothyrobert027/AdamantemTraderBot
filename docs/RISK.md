@@ -1,61 +1,69 @@
 # Risk Management — designed for a $500 account
 
-## 1. The key constraint: minimum lot size versus a small account
+There are two risk profiles: **standard** and **aggressive** ("high risk, high reward",
+selected by the user). Every backtest reports **both**, so the trade-off is visible. Hard
+ceilings apply on top of either profile: the config validator rejects anything above them.
 
-On a standard XAUUSD contract (100 oz/lot, per Vantage's own announcement), **0.01 lot = 1 oz
-⇒ $1 of P/L per $1 price move**. Assuming `volume_min = 0.01` (still to be checked on demo):
+## 1. What higher risk means (pure arithmetic, not a backtest)
 
-| Risk per trade | $ at risk on $500 | Max stop distance at 0.01 lot |
+Drawdown after a run of consecutive losses, compounding:
+
+| Risk per trade | 10 losses in a row | 20 losses in a row |
 |---|---|---|
-| 0.5% | $2.50 | $2.50 |
-| 1.0% | $5.00 | $5.00 |
-| 2.0% | $10.00 | $10.00 |
+| 1% | −9.6% | −18.2% |
+| 3% | −26.3% | −45.6% |
+| 5% | −40.1% | −64.2% |
 
-A v1 stop of 1.5 × ATR(14, M15) on gold is often **wider than $5** at current gold
-volatility. On a standard account, many valid signals would need *more* risk than allowed.
+Losing streaks happen more often than intuition says. *Illustration only:* with a 40% win
+rate, the expected number of 10-loss streaks in 500 trades is about **1.2**. So one is more
+likely than not. Recovering a 45% drawdown needs an **82%** gain.
 
-**Rule: if the minimum volume puts more than the allowed amount at risk, the trade is REJECTED.
-Size is never rounded up.** The backtest reports how many signals were rejected for this
-reason, so the effect is visible rather than hidden.
+Higher risk scales profits and losses alike. It does not create an edge.
 
-### Options to check in Stage 1 (decision for the user after the data is in)
-1. **Vantage MT5 Cent account.** Much finer granularity. Spec and spread to be checked.
-2. **XAUUSD247 (1-oz contract).** 0.01 lot = 0.01 oz, so sizing becomes nearly continuous.
-   Session and weekend behaviour differ, regional availability is to be checked.
-3. **Standard account with a tighter-stop variant.** Accept a lower signal rate.
+## 2. The minimum-lot constraint
 
-The sizing code is spec-driven, so all three options need no code change: only a different
-`SymbolSpec`.
+On standard XAUUSD (100 oz/lot), **0.01 lot ≈ $1 P/L per $1 move**. Assuming
+`volume_min = 0.01` (still to be checked on demo), the widest stop the system can accept is:
 
-## 2. Sizing formula (`risk/sizing.py`)
+| Risk per trade | $ at risk on $500 | Max stop at 0.01 lot |
+|---|---|---|
+| 1% | $5 | $5 |
+| 3% | $15 | $15 |
+
+The aggressive profile fits supply/demand stops (zone width + ATR buffer) far more often.
+That is a practical reason for it on this account size. A Cent account or XAUUSD247 would
+allow precise sizing at either profile.
+
+**Rule: if the minimum volume would risk more than allowed, REJECT the trade. Size is never
+rounded up.**
+
+## 3. Sizing formula (`risk/sizing.py`)
 ```
 risk_money   = equity × risk_pct
 loss_per_lot = (|entry − stop| / tick_size) × tick_value + commission_per_lot + est_slippage
-raw_volume   = risk_money / loss_per_lot
-volume       = floor(raw_volume / volume_step) × volume_step
-reject if volume < volume_min
-reject if volume × loss_per_lot > risk_money × 1.0     (never exceed)
+volume       = floor((risk_money / loss_per_lot) / volume_step) × volume_step
+reject if volume < volume_min  or  volume × loss_per_lot > risk_money
 ```
 
-## 3. Hard limits (defaults; configurable only downward via the config validator)
+## 4. Limits
 
-| Limit | Value | Action on breach |
-|---|---|---|
-| Risk per trade | 1.0% of equity (absolute cap 2.0%) | Reject trade |
-| Open positions | 1 | Reject trade |
-| Trades per day | 3 | Reject until next UTC day |
-| Consecutive losses | 3 | Pause until next UTC day |
-| Daily loss | 3% of start-of-day equity (realised + floating) | Close all, pause until next day |
-| Weekly loss | 6% of start-of-week equity | Close all, pause until next week |
-| Max drawdown from peak | 15% | **Kill switch**: close all, halt; only a human can reset |
-| Effective leverage | notional / equity ≤ 10× | Reject trade |
-| Free margin after entry | ≥ 70% of equity | Reject trade |
-| Stop required | Every order has a server-side SL at send | Reject if missing |
-| Weekend | Flat before Friday close | Forced exit |
+| Limit | Standard | Aggressive | Hard ceiling | Action on breach |
+|---|---|---|---|---|
+| Risk per trade | 1% | 3% | 3% | Reject |
+| Open positions | 1 | 1 | 2 | Reject |
+| Trades per day | 3 | 3 | 5 | Reject until next day |
+| Consecutive losses | 3 | 3 | 4 | Pause until next day |
+| Daily loss | 3% | 6% | 8% | Close all, pause until next day |
+| Weekly loss | 6% | 12% | 15% | Close all, pause until next week |
+| Max drawdown from peak | 15% | 30% | 35% | **Kill switch**: halt; only a human can reset |
+| Effective leverage (notional/equity) | 10× | 20× | 25× | Reject |
+| Free margin after entry | ≥ 70% | ≥ 50% | ≥ 50% | Reject |
+| Server-side stop on every order | required | required | — | Reject |
+| Flat before weekend | yes | yes | — | Forced exit |
 
-## 4. Failure-mode risks covered
+## 5. Failure modes covered
 - **Disconnect:** server-side SL/TP protect open positions. On reconnect, reconcile first.
-- **Stale data:** the scanner blocks trading (F1).
-- **Runaway loop:** a trades-per-day cap and an order-rate limiter (max 1 order per 60 s).
+- **Stale data:** the scanner blocks trading.
+- **Runaway loop:** a trades-per-day cap and at most 1 order per 60 s.
 - **Unknown broker error:** halt and alert. No blind retries.
-- **Clock drift:** a VPS time-sync check in `monitoring.health`.
+- **Clock drift:** a VPS time-sync check.

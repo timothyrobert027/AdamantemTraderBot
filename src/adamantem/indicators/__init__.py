@@ -1,1 +1,1 @@
-"""Vectorised EMA, ATR, RSI and rolling extrema. (Stage 3)"""
+"""Vectorised EMA, ATR, rolling percentiles and rolling extrema. (Stage 3)"""

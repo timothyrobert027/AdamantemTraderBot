@@ -19,8 +19,8 @@ job. The scanner is pure (no I/O) and fully unit-testable.
 | F5 | Weekend | No entries Friday ≥ 18:00 UTC; flat before close | Weekend gap risk |
 | F6 | Spread absolute | Spread ≤ `max_spread_points` (set from Vantage demo stats) | Cost control |
 | F7 | Spread relative | Spread ≤ 10% of ATR(14, M15) | Cost relative to expected move |
-| F8 | Volatility regime | ATR(14, M15) between its 10th and 95th percentile over the last 60 days | Skip dead markets and panic markets |
-| F9 | Trend regime | H1 \|EMA50 − EMA200\| ≥ 0.5 × ATR(14, H1) | Pullback logic needs a trend to pull back within |
+| F8 | Volatility regime | ATR(14, M15) between its 30th and 95th percentile over the last 60 days | Supply/demand reactions need enough movement to pay the spread; skip panic markets |
+| F9 | Zone proximity | Price is within 1.0 × ATR(14, H1) of a fresh, valid zone (see STRATEGY.md) | No zone nearby means nothing to evaluate |
 | F10 | News blackout | No entries from 30 min before to 30 min after high-impact USD events (CPI, NFP, FOMC, PCE, GDP) | Event slippage |
 | F11 | Exposure | No open position on XAUUSD by this magic number | One position at a time |
 
@@ -28,7 +28,7 @@ job. The scanner is pure (no I/O) and fully unit-testable.
 ```python
 MarketState(
     time_utc, tradeable: bool, reasons: tuple[RejectReason, ...],
-    trend: Literal["up", "down", "none"], atr_m15, atr_h1, spread, vol_percentile,
+    active_zones: tuple[Zone, ...], atr_m15, atr_h1, spread, vol_percentile,
 )
 ```
 

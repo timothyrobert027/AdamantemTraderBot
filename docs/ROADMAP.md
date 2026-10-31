@@ -8,7 +8,7 @@ Each stage ends with a **results review**. The next stage starts only after you 
 | 1 | Foundation | `config`, `core`, `safety`, logging; full safety and unit tests | CI green; safety tests show live mode and real accounts are refused | Cloud |
 | 2 | Data | Dukascopy downloader, resampler, quality checks, Parquet store; fake symbol spec; `export_symbol_spec.py` | Data quality report (gaps, spikes, coverage) for ≥ 4 years | Cloud |
 | 3 | Indicators + scanner | `indicators`, `scanner` with per-filter tests | Scanner statistics: % of time tradeable and rejection-reason distribution | Cloud |
-| 4 | Strategy + risk | `strategy`, `baselines`, `risk` with property tests | Signal list on fixture data; sizing tables; % of signals rejected by min-lot | Cloud |
+| 4 | Strategy + risk | `strategy`, `baselines`, `risk` with property tests | Zones drawn on fixture charts for visual check; signal list; sizing tables for both risk profiles; % of signals rejected by min-lot | Cloud |
 | 5 | Backtest engine | `backtest` engine, costs, fills, metrics, report | Determinism proof; a single in-sample run *clearly labelled* | Cloud |
 | 6 | Validation | Walk-forward, Monte Carlo, baseline comparison, holdout | Pass/fail against the pre-registered criteria in `STRATEGY.md`. **Failure means no deployment.** | Cloud |
 | 7 | MT5 adapter | `mt5_broker`, `mt5_provider`, contract tests with a fake MT5, `adamantem doctor` | Contract test suite green | Cloud |
@@ -16,8 +16,8 @@ Each stage ends with a **results review**. The next stage starts only after you 
 | 9 | Review | Written assessment | Your decision. Live trading is **not** part of this project's scope. | — |
 
 ## Decisions needed from you at the Stage 0 gate
-1. Approve or change the strategy hypothesis and the pre-registered acceptance criteria.
-2. Approve the risk limits (1% per trade, 3% daily, 15% kill switch).
+1. ~~Strategy direction~~ → supply/demand zones + volatility (chosen). Approve the exact rules and criteria in `STRATEGY.md`.
+2. ~~Risk appetite~~ → aggressive profile (3% / 6% daily / 30% kill switch) chosen; standard profile reported alongside.
 3. Account type to research: Standard, Cent, or XAUUSD247 (or all three as separate specs).
 4. Whether you can get temporary access to any Windows PC for an early read-only symbol spec
    export.

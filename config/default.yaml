@@ -24,34 +24,51 @@ scanner:
   friday_cutoff_utc: "18:00"
   max_spread_points: null       # calibrate from Vantage demo data
   max_spread_atr_fraction: 0.10
-  vol_percentile_range: [10, 95]
+  vol_percentile_range: [30, 95]
   vol_lookback_days: 60
-  trend_min_ema_gap_atr: 0.5
   news_blackout_minutes: 30
 
 strategy:
-  name: trend_pullback_v1
-  ema_fast_h1: 50
-  ema_slow_h1: 200
-  ema_pullback_m15: 20
-  rsi_period: 14
-  rsi_long_reset: 40
-  rsi_short_reset: 60
-  lookback_bars: 6
-  sl_atr_mult: 1.5
-  tp_r_mult: 2.0
-  time_stop_bars: 16
+  name: supply_demand_v1
+  variant: SD-A                 # SD-A..SD-D, see docs/STRATEGY.md
+  zone_timeframe: H1
+  atr_period: 14
+  base_max_candles: 3
+  base_max_range_atr: 1.0
+  base_max_body_frac: 0.5
+  impulse_max_candles: 2
+  impulse_min_move_atr: 2.0
+  impulse_min_body_frac: 0.6
+  zone_max_width_atr: 1.0
+  zone_max_age_bars: 120
+  rejection_min_wick_frac: 0.4
+  min_room_r: 2.0
+  sl_buffer_atr: 0.25
+  tp_max_r: 3.0
+  tp_default_r: 2.5
+  time_stop_bars: 24
   session_exit_utc: "20:30"
+  trend_filter: false
+  trend_ema: 200
 
 risk:
-  risk_per_trade_pct: 1.0
-  risk_per_trade_cap_pct: 2.0
+  profile: aggressive           # standard | aggressive (backtests report both)
+  profiles:
+    standard:
+      risk_per_trade_pct: 1.0
+      daily_loss_limit_pct: 3.0
+      weekly_loss_limit_pct: 6.0
+      max_drawdown_kill_pct: 15.0
+      max_effective_leverage: 10.0
+      min_free_margin_pct: 70.0
+    aggressive:
+      risk_per_trade_pct: 3.0
+      daily_loss_limit_pct: 6.0
+      weekly_loss_limit_pct: 12.0
+      max_drawdown_kill_pct: 30.0
+      max_effective_leverage: 20.0
+      min_free_margin_pct: 50.0
   max_open_positions: 1
   max_trades_per_day: 3
   max_consecutive_losses: 3
-  daily_loss_limit_pct: 3.0
-  weekly_loss_limit_pct: 6.0
-  max_drawdown_kill_pct: 15.0
-  max_effective_leverage: 10.0
-  min_free_margin_pct: 70.0
   min_seconds_between_orders: 60

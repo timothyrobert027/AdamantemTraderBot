@@ -34,12 +34,24 @@ def test_no_credential_keys_in_config():
     walk(load_default())
 
 
-def test_risk_limits_within_caps():
+HARD_CEILINGS = {
+    "risk_per_trade_pct": 3.0,
+    "daily_loss_limit_pct": 8.0,
+    "weekly_loss_limit_pct": 15.0,
+    "max_drawdown_kill_pct": 35.0,
+    "max_effective_leverage": 25.0,
+}
+
+
+def test_risk_profiles_within_hard_ceilings():
     risk = load_default()["risk"]
-    assert 0 < risk["risk_per_trade_pct"] <= risk["risk_per_trade_cap_pct"] <= 2.0
-    assert risk["max_open_positions"] == 1
-    assert risk["daily_loss_limit_pct"] <= 3.0
-    assert risk["max_drawdown_kill_pct"] <= 15.0
+    assert risk["profile"] in risk["profiles"]
+    for name, profile in risk["profiles"].items():
+        for key, ceiling in HARD_CEILINGS.items():
+            assert 0 < profile[key] <= ceiling, f"{name}.{key}"
+        assert profile["min_free_margin_pct"] >= 50.0
+    assert risk["max_open_positions"] <= 2
+    assert risk["max_trades_per_day"] <= 5
 
 
 def test_secrets_are_gitignored():
