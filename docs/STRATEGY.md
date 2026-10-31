@@ -18,6 +18,35 @@ comes on the **retest** of that gap, which should now act as support. Supply is 
 
 ## 1. Zone detection (H4 and H1, closed bars only)
 
+### v2 (current, defined by the user): order blocks and FVGs — `zone_model: ob_fvg`
+
+The zones are **order blocks (OB)** and **fair value gaps (FVG)** on H1 and H4. When an OB and
+an FVG are near each other, **the OB is preferred**. `ATR` is ATR14 of the zone's timeframe.
+
+**Bullish order block (demand):** the **last bearish candle** before a bullish displacement.
+Within the next 3 candles the move must:
+- close above the OB candle's high;
+- travel at least `1.5 × ATR` from the OB low (measured at a close);
+- leave a bullish FVG (3-candle gap).
+
+The zone is the OB candle's range: proximal = high, distal = low; range ≤ `1.5 × ATR`. It
+becomes known at the close of the candle that completes all three conditions. The bearish
+order block (supply) is the mirror.
+
+**FVG zone:** a 3-candle gap on H1/H4 of at least `0.3 × ATR`. A bullish gap is demand
+(proximal = top, distal = bottom), a bearish gap is supply.
+
+**OB preferred:** if an OB and an FVG of the same side overlap or are less than `0.5 × ATR`
+apart (any timeframe), the FVG is dropped at the moment the later of the two appears. The
+OB's own displacement gap is therefore usually dropped in favour of the OB.
+
+Freshness (first retest only), invalidation (a close beyond the distal edge), maximum age
+(H1 120 bars, H4 60 bars) and the H4+H1 confluence tag work as in v1. Results are also
+broken down by zone type (`OB`, `FVG`, `NONE`).
+
+### v1 (superseded): base + impulse — `zone_model: base_impulse`
+
+
 The same rules run independently on **H4** and **H1**. `ATR` means ATR14 of that zone's own
 timeframe, measured at the base.
 

@@ -125,8 +125,11 @@ def backtest(args: argparse.Namespace) -> Path:
         f"- Duplicates {q.duplicates}; bad OHLC {q.bad_ohlc}; negative spreads "
         f"{q.negative_spread}; unexpected weekday gaps > 30 min: {q.weekday_gaps_over_30m}",
         f"- Spread median ${q.median_spread:.3f}, 95th percentile ${q.p95_spread:.3f}",
-        f"- Zones detected: {len(mk.zones)} "
-        f"(H4 {sum(z.tf == 'H4' for z in mk.zones)}, H1 {sum(z.tf == 'H1' for z in mk.zones)})",
+        f"- Zones detected: {len(mk.zones)} (H4 {sum(z.tf == 'H4' for z in mk.zones)}, "
+        f"H1 {sum(z.tf == 'H1' for z in mk.zones)}); order blocks "
+        f"{sum(z.kind == 'OB' for z in mk.zones)}, FVG {sum(z.kind == 'FVG' for z in mk.zones)} "
+        f"(FVGs dropped for a nearby OB or a stronger overlapping FVG: "
+        f"{sum(z.kind == 'FVG' and z.dead_time < z.expire_time for z in mk.zones)})",
         "",
         "## Summary",
         "",
@@ -145,6 +148,7 @@ def backtest(args: argparse.Namespace) -> Path:
         lines += [f"### {var} / {prof_name} / {scen}", ""]
         if not df.empty:
             lines += ["By context:", "", breakdown(df, "context").round(3).to_markdown(), ""]
+            lines += ["By zone type:", "", breakdown(df, "zone_kind").round(3).to_markdown(), ""]
             lines += ["By side:", "", breakdown(df, "side").round(3).to_markdown(), ""]
             df = df.assign(year=pd.to_datetime(df.entry_time).dt.year)
             lines += ["By year:", "", breakdown(df, "year").round(3).to_markdown(), ""]

@@ -411,7 +411,7 @@ function renderTrades(day) {
     b.className = "trade";
     const cls = t.r > 0 ? "s-ok" : "s-bad";
     b.innerHTML = `<span class="side ${t.side === "long" ? "s-ok" : "s-bad"}">${t.side === "long" ? "LONG" : "SHORT"}</span>
-      <span>${hhmm(t.marks.fill)}–${hhmm(t.marks.exit)} · ${t.context} · uscita ${REASON[t.reason]}</span>
+      <span>${hhmm(t.marks.fill)}–${hhmm(t.marks.exit)} · ${t.zone_kind && t.zone_kind !== "NONE" ? t.zone_kind + " " : ""}${t.context} · uscita ${REASON[t.reason]}</span>
       <span class="r ${cls}">${t.r > 0 ? "+" : ""}${t.r.toFixed(2)}R</span>
       <span class="detail">entrata ${t.entry} · stop ${t.stop} · ${(t.tps && t.tps.length > 1) ? t.tps.map((p, k) => `TP${k + 1} ${p}`).join(" · ") : "target " + t.target} · ${t.volume.toFixed(2)} lotti · $${t.pnl > 0 ? "+" : ""}${t.pnl} · conto $${t.equity}</span>
       ${(t.legs && t.legs.length > 1) ? `<span class="detail">${t.legs.map(l => `${l[0] === "runner" ? "runner" : l[0].toUpperCase()} ${l[1].toFixed(2)} → ${l[2]} (${REASON[l[4]] || l[4]})`).join(" · ")}</span>` : ""}`;
@@ -458,7 +458,7 @@ function drawTrade(t) {
   for (const z of t.zones) {
     g.fillStyle = z.side === "demand" ? "rgba(99,182,125,.18)" : "rgba(222,106,82,.18)";
     const ya = y(Math.min(z.high, hi)), yb = y(Math.max(z.low, lo));
-    if (yb > ya) { g.fillRect(x0, ya, x1 - x0, yb - ya); g.fillStyle = css("muted"); g.fillText(`zona ${z.tf}`, x0 + 4, ya + 12); }
+    if (yb > ya) { g.fillRect(x0, ya, x1 - x0, yb - ya); g.fillStyle = css("muted"); g.fillText(`${z.kind === "OB" ? "Order block" : z.kind === "FVG" ? "FVG" : "zona"} ${z.tf}`, x0 + 4, ya + 12); }
   }
   // inverted FVG from its creation to exit
   if (t.fvg[0] != null) {

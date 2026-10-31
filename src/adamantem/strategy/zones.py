@@ -36,6 +36,7 @@ class Zone:
     invalid_time: pd.Timestamp = NEVER
     dead_time: pd.Timestamp = NEVER
     touch_index: int | None = field(default=None, compare=False)
+    kind: str = "BASE"  # "OB" (order block), "FVG" or "BASE" (base + impulse, v1)
 
     @property
     def low(self) -> float:

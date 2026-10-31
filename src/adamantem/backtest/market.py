@@ -14,6 +14,7 @@ import pandas as pd
 from adamantem.data.resample import resample
 from adamantem.indicators.ta import atr, ema, rolling_percentile_rank
 from adamantem.strategy.fvg import FVG, detect_fvgs
+from adamantem.strategy.htf_zones import detect_ob_fvg_zones
 from adamantem.strategy.zones import Zone, detect_zones
 
 BARS_PER_DAY_M5 = 288
@@ -86,8 +87,11 @@ def build_market(m1: pd.DataFrame, params: dict, scanner: dict) -> Market:
     )
 
     zones: list[Zone] = []
-    for tf, bars in (("H4", h4), ("H1", h1)):
-        if tf in params["zone_timeframes"]:
+    tfs = {tf: bars for tf, bars in (("H4", h4), ("H1", h1)) if tf in params["zone_timeframes"]}
+    if params.get("zone_model", "ob_fvg") == "ob_fvg":
+        zones = detect_ob_fvg_zones(tfs, params)
+    else:  # v1: base + impulse supply/demand
+        for tf, bars in tfs.items():
             zones += detect_zones(bars, tf, params, start_id=len(zones))
 
     bl = low.to_numpy()

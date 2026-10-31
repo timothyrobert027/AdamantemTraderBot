@@ -33,6 +33,12 @@ strategy:
   name: sd_fvg_v1
   variant: FVG-A+3TP            # FVG-A..FVG-D, each also +BE and +3TP; see docs/STRATEGY.md
   zone_timeframes: [H4, H1]
+  zone_model: ob_fvg            # v2: order blocks + FVGs on H1/H4 (base_impulse = v1)
+  ob_max_impulse_bars: 3        # displacement must happen within 3 candles after the OB
+  ob_min_displacement_atr: 1.5  # ...travel >= 1.5 ATR from the OB's far edge and leave an FVG
+  ob_max_width_atr: 1.5         # OB candle range <= 1.5 ATR
+  htf_fvg_min_size_atr: 0.3     # H1/H4 FVG zones: gap >= 0.3 ATR
+  ob_fvg_near_atr: 0.5          # OB and FVG this close (or overlapping): keep the OB
   allow_no_zone_setups: true
   no_zone_extreme_bars: 36
   atr_period: 14

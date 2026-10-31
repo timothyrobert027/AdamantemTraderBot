@@ -137,6 +137,7 @@ class Trade:
     fvg_top: float = float("nan")
     zone_ids: tuple = ()
     tps: tuple = ()  # take-profit prices (multi exits)
+    zone_kind: str = "NONE"  # "OB", "FVG", "BASE" or "NONE" (no zone)
     legs: tuple = ()  # (name, lots, exit price, bar, reason) per closed leg
 
 
@@ -306,6 +307,7 @@ def run_backtest(
                 fvg_bottom=pos.gap_bottom,
                 fvg_top=pos.gap_top,
                 zone_ids=pos.zone_ids,
+                zone_kind=zone_kind(pos.zone_ids),
                 tps=tuple(t for t in pos.tps),
                 legs=tuple(pos.closed),
             )
@@ -351,6 +353,10 @@ def run_backtest(
             p.legs = [{"name": "target", "units": units, "tp": p.target}]
             p.tps = (p.target,)
         p.peak = p.limit
+
+    def zone_kind(ids: tuple) -> str:
+        kinds = {zones[z].kind for z in ids}
+        return "OB" if "OB" in kinds else (kinds.pop() if kinds else "NONE")
 
     def better(a: float, b: float) -> float:
         return max(a, b) if pos.side == "long" else min(a, b)
@@ -595,10 +601,12 @@ def run_backtest(
             if not hits and cur is not None and cur.context == "NONE":
                 continue  # a deeper extreme only refreshes the no-zone setup; don't log it
             if hits:
-                z = max(hits, key=lambda h: h.tf == "H4")
+                z = max(hits, key=lambda h: (h.kind == "OB", h.tf == "H4"))
                 kind = "domanda" if zside == "demand" else "offerta"
+                label = {"OB": "Order block", "FVG": "FVG"}.get(z.kind, "Zona")
                 ev(i, "hunter", "work",
-                   f"Zona di {kind} {z.tf} toccata ({z.low:.2f}–{z.high:.2f}). Contesto {context}.")
+                   f"{label} {z.tf} di {kind} toccato ({z.low:.2f}–{z.high:.2f}). "
+                   f"Contesto {context}.")
             else:
                 word = "minimo" if side == "long" else "massimo"
                 ev(i, "hunter", "idle", f"Nessuna zona vicina: nuovo {word} a 36 candele.")

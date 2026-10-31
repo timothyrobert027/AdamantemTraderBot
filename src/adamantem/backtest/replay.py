@@ -41,6 +41,7 @@ def build_replay(mk: Market, res: Result, label: str, meta: dict) -> dict:
                 "day": str(mk.t_open[t.fill_i].date()),
                 "side": t.side,
                 "context": t.context,
+                "zone_kind": t.zone_kind,
                 "entry": _r(t.entry),
                 "exit": _r(t.exit),
                 "stop": _r(t.stop),
@@ -61,7 +62,7 @@ def build_replay(mk: Market, res: Result, label: str, meta: dict) -> dict:
                     if i >= 0
                 },
                 "zones": [
-                    {"tf": zones[z].tf, "side": zones[z].side,
+                    {"tf": zones[z].tf, "side": zones[z].side, "kind": zones[z].kind,
                      "low": _r(zones[z].low), "high": _r(zones[z].high)}
                     for z in t.zone_ids
                 ],
