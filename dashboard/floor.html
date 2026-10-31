@@ -1,0 +1,326 @@
+<title>ADAMANTEM Floor</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen&family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one night-shift trading room drawn in pixels, then a roster of the seven desks below it. Single deliberate dark look. */
+:root {
+  color-scheme: dark;
+  --bg: #13171c;
+  --panel: #1b2027;
+  --line: #2b333d;
+  --fg: #ece5d3;
+  --muted: #949ba3;
+  --gold: #d6a93f;
+  --ok: #63b67d;
+  --bad: #de6a52;
+  --wait: #74a6d6;
+  --idle: #6c737b;
+  --display: "Silkscreen", "Courier New", monospace;
+  --body: "Atkinson Hyperlegible", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 980px; margin: 0 auto; padding-block: 20px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 18px; }
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+h1 { font-family: var(--display); font-weight: 400; font-size: clamp(22px, 5vw, 34px); letter-spacing: 0.02em; margin: 0; line-height: 1.1; text-wrap: balance; }
+h1 span { color: var(--gold); }
+.sub { color: var(--muted); margin: 4px 0 0; max-width: 60ch; }
+.mode { display: flex; gap: 6px; flex-wrap: wrap; }
+.mode button { font-family: var(--mono); font-size: 12px; padding: 7px 11px; border-radius: 3px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
+.mode button[aria-pressed="true"] { border-color: var(--gold); color: var(--gold); }
+.mode button:disabled { opacity: .45; cursor: not-allowed; }
+button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+.notice { font-size: 13px; color: var(--muted); border-left: 3px solid var(--gold); padding: 6px 10px; background: var(--panel); }
+.notice strong { color: var(--fg); }
+
+.ticker { display: flex; gap: 22px; overflow: hidden; white-space: nowrap; font-family: var(--mono); font-size: 12px; background: #0d1014; border: 1px solid var(--line); padding: 7px 12px; color: var(--muted); }
+.ticker b { color: var(--gold); font-weight: 500; }
+
+.stage { position: relative; width: 100%; aspect-ratio: 192 / 112; max-width: 100%; border: 1px solid var(--line); background: #0d1014; overflow: hidden; }
+.stage canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+.tag { position: absolute; transform: translate(-50%, -100%); font-family: var(--display); font-size: clamp(7px, 1.5vw, 11px); padding: 1px 5px; border-radius: 2px; background: rgba(13,16,20,.85); border: 1px solid var(--line); color: var(--fg); white-space: nowrap; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+.tag i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; background: var(--idle); }
+.tag.sel { border-color: var(--gold); }
+.bubble { position: absolute; transform: translate(-50%, calc(-100% - 22px)); max-width: min(60%, 260px); font-size: clamp(11px, 2.2vw, 13px); line-height: 1.35; background: var(--fg); color: #15191e; padding: 6px 9px; border-radius: 3px; pointer-events: none; box-shadow: 3px 3px 0 rgba(0,0,0,.45); }
+.bubble::after { content: ""; position: absolute; left: 50%; bottom: -6px; margin-left: -6px; border: 6px solid transparent; border-bottom: 0; border-top-color: var(--fg); }
+.bubble.below { transform: translate(-50%, 10px); }
+.bubble.below::after { bottom: auto; top: -6px; border: 6px solid transparent; border-top: 0; border-bottom-color: var(--fg); }
+.clock { position: absolute; right: 8px; bottom: 6px; font-family: var(--display); font-size: clamp(9px, 2vw, 13px); color: var(--gold); background: rgba(13,16,20,.8); padding: 2px 6px; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.controls button { font-family: var(--mono); font-size: 13px; padding: 8px 12px; border-radius: 3px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
+.controls .step { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+
+.roster { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.card { background: var(--panel); border: 1px solid var(--line); padding: 12px 14px; display: grid; gap: 6px; cursor: pointer; text-align: left; color: var(--fg); font: inherit; border-radius: 3px; min-width: 0; }
+.card.sel { border-color: var(--gold); }
+.card .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.card h3 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.swatch { width: 12px; height: 12px; border-radius: 2px; flex: none; }
+.pill { font-family: var(--mono); font-size: 11px; padding: 2px 7px; border-radius: 10px; border: 1px solid currentColor; white-space: nowrap; }
+.card p { margin: 0; color: var(--muted); font-size: 13px; }
+.card .now { color: var(--fg); font-size: 13.5px; }
+.card code { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.s-idle { color: var(--idle); } .s-work { color: var(--gold); } .s-ok { color: var(--ok); } .s-bad { color: var(--bad); } .s-wait { color: var(--wait); }
+
+footer { color: var(--muted); font-size: 12.5px; display: grid; gap: 4px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>ADAMANTEM <span>Floor</span></h1>
+      <p class="sub">Sei bot e un boss, uno per ogni modulo del sistema XAUUSD. Tocca un bot per vedere cosa sta facendo.</p>
+    </div>
+    <div class="mode" role="group" aria-label="Fonte dei dati">
+      <button id="mode-example" aria-pressed="true">Giornata d'esempio</button>
+      <button id="mode-live" disabled title="Disponibile quando il backtest o la demo MT5 scrivono nel journal">Dati reali · presto</button>
+    </div>
+  </header>
+
+  <p class="notice"><strong>Esempio, nessun dato reale.</strong> Gli stati qui sotto mostrano come lavora la squadra in un ciclo tipico. Nessun prezzo, trade o risultato è vero. La sala si collegherà al journal del backtest e poi alla demo MT5 Vantage.</p>
+
+  <div class="ticker" aria-label="Barra di stato">
+    <span>XAUUSD <b>in attesa di dati</b></span>
+    <span>MODALITÀ <b>demo · nessun ordine reale</b></span>
+    <span>RISCHIO <b>profilo aggressivo 3%</b></span>
+    <span>BLOCCO DD <b>30%</b></span>
+    <span>TIMEFRAME <b>H4 · H1 · M5</b></span>
+  </div>
+
+  <div class="stage" id="stage">
+    <canvas id="floor" width="192" height="112" aria-label="Sala di trading in pixel con sette bot alle scrivanie"></canvas>
+    <div class="clock" id="clock">--:-- UTC</div>
+  </div>
+
+  <div class="controls">
+    <button id="play">Pausa</button>
+    <button id="next">Passo avanti</button>
+    <span class="step" id="step"></span>
+  </div>
+
+  <section class="roster" id="roster" aria-label="Squadra"></section>
+
+  <footer>
+    <span>Le decisioni di trading sono regole fisse e testate, non scelte di un modello AI.</span>
+    <span>Codice: <code>src/adamantem/</code> · strategia: <code>docs/STRATEGY.md</code> · rischio: <code>docs/RISK.md</code></span>
+  </footer>
+</div>
+
+<script>
+const BOTS = [
+  { id: "scanner", name: "Lo Scanner", role: "Controlla sessione, spread, volatilità e freschezza dei dati a ogni candela M5.", module: "scanner/", shirt: "#4f8fd8", hair: "#2a1d14", x: 26, y: 46 },
+  { id: "hunter", name: "Il Cacciatore di zone", role: "Disegna e aggiorna le zone di domanda e offerta su H4 e H1.", module: "strategy/zones.py", shirt: "#d9822b", hair: "#5a3a1e", x: 70, y: 46 },
+  { id: "sniper", name: "Il Cecchino FVG", role: "Segue l'ultimo FVG su M5, aspetta la chiusura oltre e piazza il limit sul retest.", module: "strategy/fvg.py", shirt: "#b8483b", hair: "#1a1a1a", x: 114, y: 46 },
+  { id: "risk", name: "Il Risk Manager", role: "Calcola i lotti dal rischio, applica i limiti e può bloccare tutto.", module: "risk/ · safety/", shirt: "#5fa36f", hair: "#3b2a1a", x: 26, y: 80 },
+  { id: "exec", name: "L'Esecutore", role: "Invia gli ordini al conto demo MT5 e li riconcilia dopo ogni riavvio.", module: "execution/", shirt: "#8a6fc4", hair: "#20160f", x: 70, y: 80 },
+  { id: "ledger", name: "Il Contabile", role: "Registra ogni scansione, ordine e uscita, e prepara i report.", module: "journal/ · backtest/", shirt: "#c9b458", hair: "#6b4a2a", x: 114, y: 80 },
+  { id: "boss", name: "Il Boss", role: "Coordina il ciclo: decide chi lavora e quando. Non decide i trade.", module: "app/orchestrator.py", shirt: "#e8e2d4", hair: "#888888", x: 166, y: 70, boss: true },
+];
+
+const LABEL = { idle: "a riposo", work: "al lavoro", ok: "ok", bad: "blocco", wait: "in attesa" };
+
+// Example day: each step changes some bots' state. Illustrative only.
+const DAY = [
+  { t: "06:55", s: { boss: ["wait", "Mercato aperto ma fuori sessione. Si parte alle 07:00 UTC."], scanner: ["wait", "Fuori sessione: nessuna entrata prima delle 07:00 UTC."], hunter: ["work", "Aggiorno le zone H4 e H1 con le candele della notte."], sniper: ["idle", "Nessun setup armato."], risk: ["idle", "Limiti giornalieri azzerati. Pronto."], exec: ["idle", "Collegato al terminale demo. Nessun ordine."], ledger: ["work", "Apro il journal del giorno."] } },
+  { t: "07:05", s: { boss: ["work", "Candela M5 chiusa. Avvio il ciclo."], scanner: ["ok", "Spread ok, volatilità nel range, dati freschi: si può operare."], hunter: ["ok", "3 zone fresche attive: 1 H4, 2 H1."] } },
+  { t: "08:40", s: { scanner: ["ok", "Tutti i filtri passano."], hunter: ["work", "Il prezzo entra in una zona di domanda H1 dentro una H4: contesto H4+H1."], sniper: ["work", "Setup long armato. Seguo l'ultimo FVG ribassista su M5."] } },
+  { t: "08:55", s: { hunter: ["ok", "Zona usata. Non verrà più tradata."], sniper: ["work", "Chiusura M5 sopra il bordo dell'FVG: inversione."], boss: ["work", "Passo il segnale al Risk Manager."] } },
+  { t: "08:55", s: { risk: ["work", "Stop sotto il minimo + 0,2 ATR. Target alla prossima zona di offerta, max 3R."], sniper: ["wait", "Attendo l'ok sul rischio."] } },
+  { t: "08:55", s: { risk: ["ok", "Lotti arrotondati per difetto entro il 3% e il tetto di leva. Approvato."], exec: ["work", "Buy limit sul retest inviato al conto demo, valido 1 ora."], ledger: ["work", "Registro ordine, stop, target e rischio reale."] } },
+  { t: "09:10", s: { exec: ["ok", "Limit eseguito: l'ask ha toccato il prezzo. Stop e target sul server."], sniper: ["idle", "Posizione aperta. Nessun nuovo setup."], boss: ["wait", "Una posizione aperta: nuove entrate in pausa."] } },
+  { t: "11:25", s: { exec: ["ok", "Posizione chiusa dal broker."], ledger: ["ok", "Trade registrato con uscita, R e motivo."], risk: ["ok", "Contatori aggiornati: 1 trade oggi su 3."], boss: ["work", "Torno a scansionare."] } },
+  { t: "14:30", s: { scanner: ["bad", "Spread oltre il 10% dell'ATR M5 vicino alla notizia USD. Stop entrate."], sniper: ["idle", "Setup scartato dallo scanner."], ledger: ["work", "Registro il motivo del rifiuto."] } },
+  { t: "15:20", s: { scanner: ["ok", "Spread rientrato."], sniper: ["work", "Setup short senza zona (contesto NONE): inversione dell'FVG rialzista."], risk: ["bad", "NO: il lotto minimo rischierebbe più del consentito. Trade rifiutato."] } },
+  { t: "15:20", s: { sniper: ["idle", "Setup annullato dal Risk Manager."], ledger: ["work", "Rifiuto registrato: min_lot_exceeds_risk."], boss: ["work", "Il Risk Manager ha l'ultima parola."] } },
+  { t: "20:30", s: { scanner: ["wait", "Fine sessione: nessuna entrata fino a domani."], exec: ["ok", "Nessuna posizione aperta: niente da chiudere."], ledger: ["ok", "Report del giorno pronto."], boss: ["ok", "Giornata chiusa. Ci vediamo alle 07:00 UTC."], hunter: ["work", "Continuo ad aggiornare le zone durante la notte."], risk: ["idle", "Limiti azzerati a mezzanotte UTC."] } },
+];
+
+const state = Object.fromEntries(BOTS.map(b => [b.id, ["idle", "In attesa del primo ciclo."]]));
+let stepIndex = -1;
+let selected = "sniper";
+let playing = true;
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const stage = document.getElementById("stage");
+const canvas = document.getElementById("floor");
+const ctx = canvas.getContext("2d");
+const W = 192, H = 112;
+
+const tags = {};
+for (const b of BOTS) {
+  const el = document.createElement("div");
+  el.className = "tag";
+  el.style.left = (b.x / W * 100) + "%";
+  el.style.top = ((b.y - 13) / H * 100) + "%";
+  el.innerHTML = `<i></i>${b.name.split(" ").slice(-1)[0]}`;
+  el.addEventListener("click", () => select(b.id));
+  stage.appendChild(el);
+  tags[b.id] = el;
+}
+const bubble = document.createElement("div");
+bubble.className = "bubble";
+stage.appendChild(bubble);
+
+const roster = document.getElementById("roster");
+const cards = {};
+for (const b of BOTS) {
+  const c = document.createElement("button");
+  c.className = "card";
+  c.id = "card-" + b.id;
+  c.innerHTML = `<div class="top"><h3><span class="swatch" style="background:${b.shirt}"></span>${b.name}</h3><span class="pill"></span></div><p>${b.role}</p><span class="now"></span><code>${b.module}</code>`;
+  c.addEventListener("click", () => select(b.id));
+  roster.appendChild(c);
+  cards[b.id] = c;
+}
+
+function colorOf(s) {
+  return getComputedStyle(document.documentElement).getPropertyValue("--" + s).trim();
+}
+
+function render() {
+  for (const b of BOTS) {
+    const [s, text] = state[b.id];
+    const dot = tags[b.id].querySelector("i");
+    dot.style.background = colorOf(s);
+    tags[b.id].classList.toggle("sel", b.id === selected);
+    const card = cards[b.id];
+    card.classList.toggle("sel", b.id === selected);
+    const pill = card.querySelector(".pill");
+    pill.className = "pill s-" + s;
+    pill.textContent = LABEL[s];
+    card.querySelector(".now").textContent = text;
+  }
+  const b = BOTS.find(x => x.id === selected);
+  bubble.textContent = `${b.name}: ${state[selected][1]}`;
+  const sw = stage.clientWidth, bw = bubble.offsetWidth;
+  const cx = Math.min(Math.max(b.x / W * sw, bw / 2 + 4), sw - bw / 2 - 4);
+  bubble.style.left = cx + "px";
+  const below = b.y < 60;
+  bubble.classList.toggle("below", below);
+  bubble.style.top = ((below ? b.y + 9 : b.y - 13) / H * 100) + "%";
+  const step = DAY[Math.max(stepIndex, 0)];
+  document.getElementById("clock").textContent = step.t + " UTC";
+  document.getElementById("step").textContent = `Passo ${stepIndex + 1} di ${DAY.length} · esempio`;
+}
+
+function select(id) { selected = id; render(); }
+
+function advance() {
+  stepIndex = (stepIndex + 1) % DAY.length;
+  if (stepIndex === 0) for (const b of BOTS) state[b.id] = ["idle", "In attesa del primo ciclo."];
+  const changes = DAY[stepIndex].s;
+  for (const id in changes) state[id] = changes[id];
+  const ids = Object.keys(changes);
+  const busy = ids.find(id => changes[id][0] === "work" || changes[id][0] === "bad")
+    || ids.find(id => changes[id][0] !== "idle");
+  if (busy) selected = busy;
+  render();
+}
+
+// ---------- pixel scene ----------
+function rect(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); }
+
+function drawRoom(t) {
+  rect(0, 0, W, H, "#1c2128");
+  // back wall
+  rect(0, 0, W, 30, "#232a33");
+  rect(0, 29, W, 1, "#2f3842");
+  // wall board: gold line chart
+  rect(8, 5, 116, 18, "#0e1216");
+  rect(8, 5, 116, 1, "#3a4450");
+  ctx.fillStyle = "#d6a93f";
+  for (let i = 0; i < 108; i++) {
+    const y = 14 + Math.round(Math.sin((i + t * 4) / 7) * 3 + Math.sin((i + t * 2) / 3) * 1.5);
+    ctx.fillRect(12 + i, y, 1, 1);
+  }
+  rect(12, 20, 108, 1, "#2b333d");
+  // windows to the city
+  for (let i = 0; i < 3; i++) {
+    const wx = 132 + i * 19;
+    rect(wx, 5, 15, 18, "#0f1a2a");
+    for (let k = 0; k < 6; k++) {
+      const on = ((k * 7 + i * 3 + Math.floor(t / 2)) % 5) !== 0;
+      rect(wx + 2 + (k % 3) * 4, 9 + Math.floor(k / 3) * 6, 2, 3, on ? "#e3c46b" : "#1b2638");
+    }
+  }
+  // floor planks
+  for (let y = 30; y < H; y += 6) {
+    rect(0, y, W, 6, (y / 6) % 2 ? "#2a2219" : "#2e251b");
+    rect(0, y, W, 1, "#241d15");
+  }
+  // boss glass office
+  rect(146, 36, 44, 72, "rgba(140,170,200,0.10)");
+  rect(146, 36, 1, 72, "#5d7286");
+  rect(146, 36, 44, 1, "#5d7286");
+  // brass gold bar trophy (XAU)
+  rect(150, 99, 10, 4, "#d6a93f");
+  rect(151, 98, 8, 1, "#f0cf72");
+  // plants
+  for (const px of [4, 136]) {
+    rect(px, 98, 6, 6, "#4a3a2a");
+    rect(px - 1, 91, 8, 7, "#3f7a4e");
+    rect(px + 1, 88, 4, 3, "#4f9160");
+  }
+}
+
+function drawDesk(b, t) {
+  const [s] = state[b.id];
+  const working = s === "work";
+  const glow = { idle: "#3a4450", work: "#d6a93f", ok: "#63b67d", bad: "#de6a52", wait: "#74a6d6" }[s];
+  const dx = b.x - 14;
+  // chair + person behind desk
+  const bob = working && !reduce ? Math.round(Math.sin(t * 6 + b.x) * 0.6) : 0;
+  const px = b.x - 3, py = b.y - 12 + bob;
+  rect(px - 1, b.y - 6, 9, 6, "#1a1f25");                // chair back
+  rect(px + 1, py, 5, 2, b.hair);                          // hair
+  rect(px + 1, py + 2, 5, 3, "#e0b48c");                   // face
+  rect(px + 2, py + 3, 1, 1, "#2a1d14"); rect(px + 4, py + 3, 1, 1, "#2a1d14");
+  rect(px, py + 5, 7, 5, b.shirt);                         // shirt
+  if (b.boss) rect(px + 3, py + 5, 1, 4, "#b8483b");       // boss tie
+  // arms typing
+  const a = working && !reduce ? (Math.floor(t * 8) % 2) : 0;
+  rect(px - 1, py + 6 + a, 1, 3, b.shirt);
+  rect(px + 7, py + 7 - a, 1, 3, b.shirt);
+  // desk
+  rect(dx, b.y - 2, 28, 3, "#6b4b2e");
+  rect(dx, b.y + 1, 28, 1, "#4a331f");
+  rect(dx + 1, b.y + 2, 2, 7, "#4a331f"); rect(dx + 25, b.y + 2, 2, 7, "#4a331f");
+  // monitors (in front of the person, seen from behind -> drawn as screens facing the room)
+  for (const mx of [dx + 2, dx + 17]) {
+    rect(mx, b.y - 9, 9, 7, "#0e1216");
+    rect(mx + 1, b.y - 8, 7, 5, glow);
+    if (working && !reduce) rect(mx + 1 + (Math.floor(t * 5 + mx) % 7), b.y - 8, 1, 5, "#0e1216");
+    rect(mx + 4, b.y - 2, 1, 1, "#3a4450");
+  }
+  // status lamp on desk
+  rect(dx + 13, b.y - 4, 2, 2, glow);
+}
+
+let last = 0, acc = 0;
+function frame(ts) {
+  const t = ts / 1000;
+  drawRoom(reduce ? 0 : t);
+  for (const b of BOTS) drawDesk(b, t);
+  if (playing) {
+    acc += ts - last;
+    if (acc > 2600) { acc = 0; advance(); }
+  }
+  last = ts;
+  requestAnimationFrame(frame);
+}
+
+document.getElementById("play").addEventListener("click", e => {
+  playing = !playing;
+  e.currentTarget.textContent = playing ? "Pausa" : "Riprendi";
+});
+document.getElementById("next").addEventListener("click", () => { advance(); acc = 0; });
+
+addEventListener("resize", render);
+advance();
+requestAnimationFrame(frame);
+</script>
