@@ -57,7 +57,7 @@ the item is marked for verification.
 ## 5. Data notes
 
 - Research data from Dukascopy is **not** Vantage's price feed. Spreads and occasional
-  spikes differ. Once the demo is running, the system exports Vantage M1/M15 history with
+  spikes differ. Once the demo is running, the system exports Vantage M1/M5 history with
   `copy_rates_range` and re-runs the backtest on it to calibrate the cost model.
 
 ## 6. Open item

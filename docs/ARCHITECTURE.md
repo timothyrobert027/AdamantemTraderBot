@@ -43,9 +43,9 @@ document makes no claims about performance.
                 └─────────────────────────────────────────────────────┘
 ```
 
-### Data flow (one decision cycle, every closed M15 bar)
+### Data flow (one decision cycle, every closed M5 bar)
 
-1. `data` delivers closed bars (M15 and H1) plus the current tick/spread.
+1. `data` delivers closed bars (M5 and H1) plus the current tick/spread.
 2. `indicators` computes ATR, EMA and percentiles; `strategy.zones` maintains the live set of supply/demand zones.
 3. `scanner` scores the market state: session, spread, volatility regime, trend regime,
    news blackout and data freshness. It returns `TRADEABLE` or a list of blocking reasons.
@@ -76,14 +76,15 @@ Package root: `src/adamantem/`
 | | `providers/dukascopy.py` | Downloads and normalizes free historical XAUUSD ticks/bars for research. |
 | | `providers/mt5_provider.py` | `copy_rates_range`, `symbol_info_tick`. Windows only, lazy import. |
 | | `quality.py` | Gap, duplicate, outlier, weekend and stale-bar checks; returns a quality report. |
-| | `resample.py` | Tick → M1 → M15/H1 resampling with explicit bar-close semantics. |
+| | `resample.py` | Tick → M1 → M5/H1 resampling with explicit bar-close semantics. |
 | | `store.py` | Local Parquet cache keyed by source/symbol/timeframe. |
 | `indicators` | `ta.py` | Vectorised EMA, ATR (Wilder), rolling percentile, rolling high/low. Tested against reference values. |
 | `scanner` | `filters.py` | Independent filters: session, spread, volatility regime, trend regime, news blackout, rollover window, data freshness. |
 | | `scanner.py` | Combines the filters into a `MarketState` with reasons. Has no trading logic. |
 | `strategy` | `base.py` | `Strategy` protocol: `on_bar(state, history) -> Signal | None`. |
 | | `zones.py` | Supply/demand zone detection (base + impulse), validity, freshness, invalidation and scoring. Pure functions over H1 bars. |
-| | `supply_demand.py` | The v1 strategy: entry at a fresh zone with volatility gating, ATR stops, opposing-zone targets (see `STRATEGY.md`). |
+| | `fvg.py` | M5 fair value gap detection (3-candle), minimum size, inversion (close through) and retest tracking. |
+| | `supply_demand.py` | The v1 strategy: H1 zone arms the setup, M5 close through the last opposing FVG, limit entry on the retest, ATR stops, opposing-zone targets (see `STRATEGY.md`). |
 | | `baselines.py` | Random-entry and buy-and-hold baselines that use the same exits, as controls. |
 | `risk` | `sizing.py` | Fixed-fractional sizing from `SymbolSpec` (tick value, tick size, volume min/step). Rounds **down** and never up. |
 | | `limits.py` | Daily, weekly and max-drawdown limits, max positions, max trades/day, loss streak, effective leverage cap. |

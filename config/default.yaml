@@ -15,7 +15,7 @@ broker:
 
 instrument:
   base_symbol: XAUUSD
-  entry_timeframe: M15
+  entry_timeframe: M5
   trend_timeframe: H1
 
 scanner:
@@ -29,8 +29,8 @@ scanner:
   news_blackout_minutes: 30
 
 strategy:
-  name: supply_demand_v1
-  variant: SD-A                 # SD-A..SD-D, see docs/STRATEGY.md
+  name: sd_fvg_v1
+  variant: FVG-A                # FVG-A..FVG-D, see docs/STRATEGY.md
   zone_timeframe: H1
   atr_period: 14
   base_max_candles: 3
@@ -41,12 +41,18 @@ strategy:
   impulse_min_body_frac: 0.6
   zone_max_width_atr: 1.0
   zone_max_age_bars: 120
-  rejection_min_wick_frac: 0.4
   min_room_r: 2.0
-  sl_buffer_atr: 0.25
+  # M5 entry: inversion of the last opposing FVG, then retest
+  fvg_min_size_atr: 0.15
+  arm_window_bars: 36
+  fvg_max_age_before_arm_bars: 24
+  retest_window_bars: 12
+  retest_price: edge            # edge | midpoint
+  cancel_if_moved_r: 1.0
+  sl_buffer_atr: 0.2
   tp_max_r: 3.0
   tp_default_r: 2.5
-  time_stop_bars: 24
+  time_stop_bars: 72
   session_exit_utc: "20:30"
   trend_filter: false
   trend_ema: 200
