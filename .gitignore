@@ -28,3 +28,6 @@ reports/*
 *.sqlite
 *.db
 logs/
+
+# Demo runtime state and broker exports (never commit account data by accident)
+state/

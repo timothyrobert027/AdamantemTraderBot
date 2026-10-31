@@ -149,6 +149,8 @@ class Result:
     start_equity: float = 0.0
     # (bar index, bot, state, text) - filled only when record_events=True
     events: list[tuple[int, str, str, str]] = field(default_factory=list)
+    # orders the strategy decided to place; only filled when simulate_fills=False (live use)
+    planned: list = field(default_factory=list)
 
 
 class RiskState:
@@ -216,6 +218,7 @@ def run_backtest(
     extra_spread: float = 0.0,
     record_events: bool = False,
     trade_start: pd.Timestamp | None = None,
+    simulate_fills: bool = True,
 ) -> Result:
     var = VARIANTS[variant]
     n = len(mk.t_open)
@@ -243,6 +246,7 @@ def run_backtest(
     halted_at = None
 
     events: list[tuple[int, str, str, str]] = []
+    planned: list = []
 
     def bump(key: str) -> None:
         c[key] = c.get(key, 0) + 1
@@ -453,6 +457,11 @@ def run_backtest(
             orig_stop=stop,
         )
         bump("orders_placed")
+        if not simulate_fills:
+            # live mode: the broker decides fills; record the decision and stay flat
+            planned.append(pending)
+            pending = None
+            return
         pct = 100 * size.risk_money / rs.equity
         ev(i, "risk", "ok", f"Approvato: {size.volume:.2f} lotti, rischio ${size.risk_money:.2f} ({pct:.1f}%).")
         kind = "Buy" if side == "long" else "Sell"
@@ -647,4 +656,5 @@ def run_backtest(
                     ev(i, "sniper", "work", f"Nuovo FVG di riferimento {fv.bottom:.2f}–{fv.top:.2f}.")
 
     return Result(trades=trades, counters=c, halted_at=halted_at, start_equity=start_equity,
+                  planned=planned,
                   events=events)

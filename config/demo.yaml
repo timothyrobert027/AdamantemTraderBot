@@ -1,0 +1,17 @@
+# Demo-trading overrides: the configuration validated in docs/HOLDOUT.md, nothing else.
+# Merged over default.yaml; machine-specific settings go in config/local.yaml (git-ignored).
+mode: demo
+live_trading_enabled: false   # there is no live mode; the bot refuses non-demo accounts
+
+strategy:
+  zone_model: ob_fvg
+  allow_no_zone_setups: false
+  variant: FVG-D               # midpoint retest + H1 trend filter, single exit
+
+risk:
+  profile: standard            # 1% target risk (0.01 lot allowed up to 5%), kill switch 15%
+
+demo:
+  history_m1_bars: 100000      # about 70 trading days: enough for zones, EMA200 and ATR percentiles
+  poll_delay_seconds: 10       # run this long after each 5-minute boundary
+  state_dir: state             # kill switch, peak equity, open-order notes, journal (git-ignored)

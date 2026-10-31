@@ -23,6 +23,9 @@ Current stage: **0 — Architecture** (no trading code yet, no performance resul
 | [TESTING](docs/TESTING.md) | Testing framework |
 | [DEPLOYMENT](docs/DEPLOYMENT.md) | Windows VPS deployment |
 | [CLOUD_VS_WINDOWS](docs/CLOUD_VS_WINDOWS.md) | What needs MT5 and what doesn't |
+| [HOLDOUT](docs/HOLDOUT.md) | Validated configuration and its test |
+| [DEMO](docs/DEMO.md) | Demo forward test plan |
+| [GUIDA_VPS](docs/GUIDA_VPS.md) | Guida in italiano: VPS + MT5 demo dall'iPhone |
 
 ## Repository layout
 ```

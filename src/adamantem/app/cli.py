@@ -338,7 +338,29 @@ def main() -> None:
     s2.add_argument("--cache", default=str(ROOT / "data" / "raw"))
     s2.add_argument("--assumed-spread", type=float, default=0.25)
     s2.add_argument("--out", default=str(ROOT / "reports"))
+    dr = sub.add_parser("doctor", help="read-only MT5 checks on the VPS (no orders)")
+    dr.add_argument("--out", default=str(ROOT / "exports"))
+    dr.add_argument("--no-export", action="store_true")
+    sub.add_parser("demo", help="run the validated configuration on the MT5 DEMO account")
     args = parser.parse_args()
+    if args.cmd in ("doctor", "demo"):
+        import logging
+
+        from adamantem.live.mt5_client import MT5Client, load_mt5
+        from adamantem.live.runner import DemoBot, load_demo_config
+
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+        cfg = load_demo_config(ROOT)
+        client = MT5Client(load_mt5(), cfg["broker"].get("terminal_path"))
+        if args.cmd == "doctor":
+            from adamantem.live.doctor import run_doctor
+
+            run_doctor(client, cfg, Path(args.out), export=not args.no_export)
+        else:
+            bot = DemoBot(client, cfg, ROOT / cfg["demo"]["state_dir"])
+            bot.setup()
+            bot.run_forever()
+        return
     if args.cmd == "scalp2":
         from adamantem.app import scalp2
 
