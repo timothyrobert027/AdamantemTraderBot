@@ -1,4 +1,4 @@
-"""Order blocks and fair value gaps on H1/H4 as zones (strategy v2). See docs/STRATEGY.md §1.
+"""Order blocks and fair value gaps on M15/H1/H4 as zones (strategy v2). See docs/STRATEGY.md §1.
 
 Bullish order block: the last bearish candle before a bullish displacement. Within
 ``ob_max_impulse_bars`` candles after it, the move must close above the OB high, travel at
@@ -23,7 +23,7 @@ import pandas as pd
 from adamantem.indicators.ta import atr as atr_fn
 from adamantem.strategy.zones import NEVER, Zone, _resolve_overlaps
 
-STEP = {"H1": pd.Timedelta("1h"), "H4": pd.Timedelta("4h")}
+STEP = {"M15": pd.Timedelta("15min"), "H1": pd.Timedelta("1h"), "H4": pd.Timedelta("4h")}
 
 
 def _arrays(bars: pd.DataFrame, period: int):

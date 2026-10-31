@@ -18,7 +18,7 @@ import pandas as pd
 from adamantem.backtest.market import Market
 from adamantem.risk.sizing import SymbolSpec, size_position
 
-PRIORITY = {"H4+H1": 3, "H4": 2, "H1": 1, "NONE": 0}
+PRIORITY = {"H4+H1": 4, "H4": 3, "H1": 2, "M15": 1, "NONE": 0}
 _BASE_VARIANTS = {
     "FVG-A": {"retest_price": "edge", "trend_filter": False},
     "FVG-B": {"retest_price": "edge", "trend_filter": True},
@@ -291,7 +291,7 @@ def run_backtest(
                 side=pos.side,
                 context=pos.context,
                 entry_time=mk.t_open[pos_fill_i],
-                exit_time=mk.t_open[k] + pd.Timedelta("5min"),
+                exit_time=mk.t_open[k] + mk.bar,
                 entry=pos.limit,
                 exit=avg_exit,
                 stop=pos.orig_stop,
@@ -412,7 +412,7 @@ def run_backtest(
         r = abs(limit - stop)
         if r <= 0:
             return reject("invalid_stop")
-        if spread[i] > 0.10 * r:
+        if spread[i] > params.get("max_spread_stop_fraction", 0.10) * r:
             return reject("spread_vs_stop")
         sign = 1.0 if side == "long" else -1.0
         opp = "supply" if side == "long" else "demand"
@@ -577,7 +577,10 @@ def run_backtest(
                         for h in h1s
                     ):
                         tfs.add("H4")
-                context = "H4+H1" if tfs == {"H1", "H4"} else tfs.pop()
+                if {"H1", "H4"} <= tfs:
+                    context = "H4+H1"
+                else:
+                    context = next(tf for tf in ("H4", "H1", "M15") if tf in tfs)
             elif params["allow_no_zone_setups"] and np.isfinite(mk.atr_h1[i]):
                 extreme = (
                     mk.bl[i] < mk.prev_low_min[i] if side == "long" else mk.bh[i] > mk.prev_high_max[i]

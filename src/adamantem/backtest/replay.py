@@ -25,6 +25,7 @@ def build_replay(mk: Market, res: Result, label: str, meta: dict) -> dict:
     epoch = pd.Timestamp("1970-01-01", tz="UTC")
     t_min = ((mk.t_open - epoch) // pd.Timedelta("1min")).to_numpy().astype(np.int64)  # UTC
     zones = {z.zid: z for z in mk.zones}
+    bar_min = int(mk.bar / pd.Timedelta("1min"))
 
     trades = []
     for n, t in enumerate(res.trades):
@@ -77,7 +78,7 @@ def build_replay(mk: Market, res: Result, label: str, meta: dict) -> dict:
     for i, bot, state, text in res.events:
         d = str(day_of[i])
         if d in active_days and len(days.setdefault(d, [])) < MAX_EVENTS_PER_DAY:
-            days[d].append([int(t_min[i]) + 5, bot, state, text])  # stamp at bar close
+            days[d].append([int(t_min[i]) + bar_min, bot, state, text])  # stamp at bar close
 
     return {"label": label, "meta": meta, "days": days, "trades": trades}
 

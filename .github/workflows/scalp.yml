@@ -1,0 +1,54 @@
+name: Scalping hypothesis S1
+
+# Manual run only. Runs the scalping experiment pre-registered in docs/SCALPING.md:
+# develop, select, validate on 2016-2020; publishes to the summary and backtest-results.
+
+on:
+  workflow_dispatch:
+    inputs:
+      spread:
+        description: "Assumed spread in $ (HistData is bid-only)"
+        default: "0.25"
+
+permissions:
+  contents: write  # only used to publish results to the backtest-results branch
+
+jobs:
+  scalp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache/restore@v4
+        with:
+          path: data/raw
+          key: xauusd-data-${{ github.run_id }}
+          restore-keys: xauusd-data-
+      - run: pip install -e .
+      - run: python -m adamantem.app.cli scalp --assumed-spread "${{ inputs.spread }}"
+      - name: Save downloaded data
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data/raw
+          key: xauusd-data-${{ github.run_id }}
+      - name: Publish summary
+        if: always()
+        run: |
+          f=$(ls -t reports/*.md 2>/dev/null | head -1)
+          if [ -n "$f" ]; then cat "$f" >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Publish results to the backtest-results branch
+        if: success()
+        run: |
+          mkdir -p "$RUNNER_TEMP/results"
+          cp reports/replay.json "$RUNNER_TEMP/results/" 2>/dev/null || true
+          cp reports/backtest_scalp.md "$RUNNER_TEMP/results/REPORT.md"
+          cd "$RUNNER_TEMP/results"
+          git init -q -b backtest-results
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add . && git commit -qm "Scalping S1 results from run ${{ github.run_id }}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" backtest-results

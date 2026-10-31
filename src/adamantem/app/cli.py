@@ -326,7 +326,17 @@ def main() -> None:
     ho.add_argument("--cache", default=str(ROOT / "data" / "raw"))
     ho.add_argument("--assumed-spread", type=float, default=0.25)
     ho.add_argument("--out", default=str(ROOT / "reports"))
+    sc = sub.add_parser("scalp", help="scalping hypothesis S1: develop, select, validate 2016-20")
+    sc.add_argument("--equity", type=float, default=500.0)
+    sc.add_argument("--config", default=str(ROOT / "config" / "default.yaml"))
+    sc.add_argument("--cache", default=str(ROOT / "data" / "raw"))
+    sc.add_argument("--assumed-spread", type=float, default=0.25)
+    sc.add_argument("--out", default=str(ROOT / "reports"))
     args = parser.parse_args()
+    if args.cmd == "scalp":
+        from adamantem.app import scalp
+
+        scalp.run(args, load_m1, load_config)
     if args.cmd == "backtest":
         backtest(args)
     elif args.cmd == "holdout":

@@ -19,6 +19,7 @@ import pandas as pd
 from adamantem.indicators.ta import atr as atr_fn
 
 NEVER = pd.Timestamp.max.tz_localize("UTC")
+TF_STEP = {"M15": "15min", "H1": "1h", "H4": "4h"}
 
 
 @dataclass
@@ -96,7 +97,7 @@ def detect_zones(bars: pd.DataFrame, tf: str, params: dict, start_id: int = 0) -
     c = bars["bid_close"].to_numpy()
     a = atr_fn(bars["bid_high"], bars["bid_low"], bars["bid_close"], params["atr_period"]).to_numpy()
     med = pd.Series(a).rolling(20, min_periods=20).median().to_numpy()
-    step = pd.Timedelta({"H1": "1h", "H4": "4h"}[tf])
+    step = pd.Timedelta(TF_STEP[tf])
     close_times = bars.index + step
     max_age = params["zone_max_age_bars"][tf]
 
@@ -151,7 +152,7 @@ def _resolve_overlaps(zones: list[Zone]) -> None:
                 continue
             if old.low > new.high or new.low > old.high:
                 continue
-            step = pd.Timedelta({"H1": "1h", "H4": "4h"}[old.tf])
+            step = pd.Timedelta(TF_STEP[old.tf])
             old_score = old.score - 0.01 * ((t - old.avail_time) / step)
             if new.score > old_score:
                 old.dead_time = t

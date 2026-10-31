@@ -49,7 +49,7 @@ strategy:
   impulse_min_move_atr: 2.0
   impulse_min_body_frac: 0.6
   zone_max_width_atr: 1.0
-  zone_max_age_bars: {H1: 120, H4: 60}
+  zone_max_age_bars: {M15: 96, H1: 120, H4: 60}
   min_room_r: 2.0
   # M5 entry: inversion of the last opposing FVG, then retest
   fvg_min_size_atr: 0.15

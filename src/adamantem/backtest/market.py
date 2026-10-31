@@ -1,6 +1,6 @@
 """Precomputed, look-ahead-safe market arrays used by the backtest loop.
 
-Everything at M5 index ``i`` is known at the close of bar ``i`` (``t_open[i] + 5 min``):
+Everything at entry-bar index ``i`` (M5, or M1 for scalping) is known at the close of bar ``i``:
 higher-timeframe values come from the last H1/H4 bar that had closed by then.
 """
 
@@ -11,18 +11,19 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from adamantem.data.resample import resample
+from adamantem.data.resample import TIMEFRAMES, resample
 from adamantem.indicators.ta import atr, ema, rolling_percentile_rank
 from adamantem.strategy.fvg import FVG, detect_fvgs
 from adamantem.strategy.htf_zones import detect_ob_fvg_zones
 from adamantem.strategy.zones import Zone, detect_zones
 
-BARS_PER_DAY_M5 = 288
+MINUTES_PER_DAY = 1440
 
 
 @dataclass
 class Market:
     t_open: pd.DatetimeIndex
+    bar: pd.Timedelta  # entry-bar length (M5 by default, M1 for scalping)
     bo: np.ndarray
     bh: np.ndarray
     bl: np.ndarray
@@ -58,15 +59,18 @@ def _map_htf(htf: pd.DataFrame, step: str, values: dict[str, pd.Series], m5_clos
 
 
 def build_market(m1: pd.DataFrame, params: dict, scanner: dict) -> Market:
-    m5 = resample(m1, "M5")
+    entry_tf = params.get("entry_timeframe", "M5")
+    m5 = m1 if entry_tf == "M1" else resample(m1, entry_tf)  # entry bars (named m5 for history)
+    bar = pd.Timedelta(TIMEFRAMES[entry_tf])
+    bars_per_day = int(MINUTES_PER_DAY / (bar / pd.Timedelta("1min")))
     h1 = resample(m1, "H1")
     h4 = resample(m1, "H4")
     t_open = m5.index
-    m5_close = t_open + pd.Timedelta("5min")
+    m5_close = t_open + bar
 
     atr5 = atr(m5["bid_high"], m5["bid_low"], m5["bid_close"], params["atr_period"])
-    lookback = scanner["vol_lookback_days"] * BARS_PER_DAY_M5
-    vol_pct = rolling_percentile_rank(atr5, lookback, min_periods=10 * BARS_PER_DAY_M5)
+    lookback = scanner["vol_lookback_days"] * bars_per_day
+    vol_pct = rolling_percentile_rank(atr5, lookback, min_periods=10 * bars_per_day)
 
     h1_atr = atr(h1["bid_high"], h1["bid_low"], h1["bid_close"], params["atr_period"])
     h1_ema = ema(h1["bid_close"], params["trend_ema"])
@@ -87,7 +91,10 @@ def build_market(m1: pd.DataFrame, params: dict, scanner: dict) -> Market:
     )
 
     zones: list[Zone] = []
-    tfs = {tf: bars for tf, bars in (("H4", h4), ("H1", h1)) if tf in params["zone_timeframes"]}
+    htf = {"H4": h4, "H1": h1}
+    if "M15" in params["zone_timeframes"]:
+        htf["M15"] = resample(m1, "M15")
+    tfs = {tf: bars for tf, bars in htf.items() if tf in params["zone_timeframes"]}
     if params.get("zone_model", "ob_fvg") == "ob_fvg":
         zones = detect_ob_fvg_zones(tfs, params)
     else:  # v1: base + impulse supply/demand
@@ -118,6 +125,7 @@ def build_market(m1: pd.DataFrame, params: dict, scanner: dict) -> Market:
 
     return Market(
         t_open=t_open,
+        bar=bar,
         bo=m5["bid_open"].to_numpy(),
         bh=bh,
         bl=bl,

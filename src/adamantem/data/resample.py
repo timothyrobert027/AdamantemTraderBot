@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-TIMEFRAMES = {"M5": "5min", "H1": "1h", "H4": "4h"}
+TIMEFRAMES = {"M1": "1min", "M5": "5min", "M15": "15min", "H1": "1h", "H4": "4h"}
 
 _AGG = {
     "bid_open": "first",
