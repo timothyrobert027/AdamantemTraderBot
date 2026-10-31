@@ -25,17 +25,25 @@ _BASE_VARIANTS = {
     "FVG-C": {"retest_price": "midpoint", "trend_filter": False},
     "FVG-D": {"retest_price": "midpoint", "trend_filter": True},
 }
-# Each base variant is tested without and with the break-even stop (docs/STRATEGY.md §5).
+# Each base variant is tested with three exit styles (docs/STRATEGY.md §5):
+# single target, single target + break-even, and 3 take profits + runner.
+_EXITS = {"": "single", "+BE": "be", "+3TP": "multi"}
 VARIANTS = {
-    **{k: {**v, "breakeven": False} for k, v in _BASE_VARIANTS.items()},
-    **{f"{k}+BE": {**v, "breakeven": True} for k, v in _BASE_VARIANTS.items()},
+    f"{k}{suffix}": {**v, "exits": mode}
+    for suffix, mode in _EXITS.items()
+    for k, v in _BASE_VARIANTS.items()
 }
 
 
 EXIT_TEXT = {
     "stop": "stop loss",
     "breakeven": "stop a break-even",
+    "lock": "stop su TP1",
+    "trail": "stop mobile del runner",
     "target": "target",
+    "tp1": "TP1",
+    "tp2": "TP2",
+    "tp3": "TP3",
     "time": "limite di 6 ore",
     "session": "fine sessione",
 }
@@ -93,6 +101,14 @@ class Pending:
     zone_ids: tuple = ()
     orig_stop: float = float("nan")
     be_active: bool = False
+    tps: tuple = ()
+    # filled at entry: one leg per take profit (tp None = runner)
+    legs: list = field(default_factory=list)
+    stage: int = 0  # highest take profit reached (multi exits)
+    stop_kind: str = "stop"
+    peak: float = float("nan")
+    realized: float = 0.0
+    closed: list = field(default_factory=list)  # (name, units, price, bar, reason)
 
 
 @dataclass
@@ -120,6 +136,8 @@ class Trade:
     fvg_bottom: float = float("nan")
     fvg_top: float = float("nan")
     zone_ids: tuple = ()
+    tps: tuple = ()  # take-profit prices (multi exits)
+    legs: tuple = ()  # (name, lots, exit price, bar, reason) per closed leg
 
 
 @dataclass
@@ -237,11 +255,31 @@ def run_backtest(
             return False
         return not (wd == 4 and m >= fri_cut) and wd < 5
 
-    def close_position(k: int, price: float, reason: str) -> None:
-        nonlocal pos, halted_at
+    step = spec.volume_step
+
+    def close_legs(k: int, legs: list, price: float, reason: str) -> None:
+        """Close some legs of the open position; finalise the trade when none remain."""
         sign = 1.0 if pos.side == "long" else -1.0
-        pnl = sign * (price - pos.limit) * pos.volume * spec.contract_size
-        pnl -= spec.commission_per_lot * pos.volume
+        for leg in legs:
+            lots = leg["units"] * step
+            pos.realized += sign * (price - pos.limit) * lots * spec.contract_size
+            pos.realized -= spec.commission_per_lot * lots
+            pos.closed.append((leg["name"], round(lots, 2), price, k, reason))
+            pos.legs.remove(leg)
+            if reason in ("tp1", "tp2", "tp3"):
+                ev(k, "exec", "ok", f"{reason.upper()} raggiunto: chiusi {lots:.2f} lotti a "
+                                    f"{price:.2f}.")
+        if not pos.legs:
+            finish(k, reason)
+
+    def close_position(k: int, price: float, reason: str) -> None:
+        close_legs(k, list(pos.legs), price, reason)
+
+    def finish(k: int, reason: str) -> None:
+        nonlocal pos, halted_at
+        pnl = pos.realized
+        lots = sum(c[1] for c in pos.closed)
+        avg_exit = sum(c[1] * c[2] for c in pos.closed) / lots
         before = (rs.paused_day, rs.paused_week, rs.halted)
         rs.on_close(pnl)
         trades.append(
@@ -251,7 +289,7 @@ def run_backtest(
                 entry_time=mk.t_open[pos_fill_i],
                 exit_time=mk.t_open[k] + pd.Timedelta("5min"),
                 entry=pos.limit,
-                exit=price,
+                exit=avg_exit,
                 stop=pos.orig_stop,
                 target=pos.target,
                 volume=pos.volume,
@@ -268,12 +306,14 @@ def run_backtest(
                 fvg_bottom=pos.gap_bottom,
                 fvg_top=pos.gap_top,
                 zone_ids=pos.zone_ids,
+                tps=tuple(t for t in pos.tps),
+                legs=tuple(pos.closed),
             )
         )
         bump(f"exit_{reason}")
         r_mult = pnl / pos.risk_money
         ev(k, "exec", "ok" if pnl > 0 else "bad",
-           f"Uscita ({EXIT_TEXT[reason]}) a {price:.2f}.")
+           f"Uscita ({EXIT_TEXT[reason]}) a {pos.closed[-1][2]:.2f}.")
         ev(k, "ledger", "ok", f"Trade registrato: {r_mult:+.2f}R, ${pnl:+.2f}. Conto ${rs.equity:.2f}.")
         ev(k, "boss", "work", "Nessuna posizione aperta: torno a cercare setup.")
         after = (rs.paused_day, rs.paused_week, rs.halted)
@@ -286,6 +326,34 @@ def run_backtest(
         if rs.halted and halted_at is None:
             halted_at = mk.t_open[k]
         pos = None
+
+    def open_legs(p: Pending) -> None:
+        """Split the position into legs: 3 take profits + runner, or one leg."""
+        units = int(round(p.volume / step))
+        sign = 1.0 if p.side == "long" else -1.0
+        if var["exits"] == "multi":
+            r = p.risk_r
+            tp3_dist = min(max(abs(p.target - p.limit), params["tp3_min_r"] * r),
+                           params["tp_max_r"] * r)
+            names = ("tp1", "tp2", "tp3", "runner")
+            prices = (p.limit + sign * params["tp1_r"] * r, p.limit + sign * params["tp2_r"] * r,
+                      p.limit + sign * tp3_dist, None)
+            counts = [0, 0, 0, 0]
+            for u in range(units):
+                counts[u % 4] += 1
+            p.legs = [{"name": n, "units": c, "tp": t}
+                      for n, c, t in zip(names, counts, prices) if c > 0]
+            p.tps = prices[:3]
+            p.target = prices[2]
+            parts = ", ".join(f"{leg['name'].upper()} {leg['units'] * step:.2f}" for leg in p.legs)
+            ev(pos_fill_i, "risk", "ok", f"Posizione divisa: {parts}.")
+        else:
+            p.legs = [{"name": "target", "units": units, "tp": p.target}]
+            p.tps = (p.target,)
+        p.peak = p.limit
+
+    def better(a: float, b: float) -> float:
+        return max(a, b) if pos.side == "long" else min(a, b)
 
     def stop_hit(k: int) -> float | None:
         slip = 0.5 * spread[k]
@@ -376,28 +444,50 @@ def run_backtest(
     for i in range(n):
         rs.roll(mk.t_open[i])
 
-        # 1. Manage an open position.
+        # 1. Manage an open position (stop first: the conservative assumption).
         if pos is not None:
             px = stop_hit(i)
             if px is not None:
-                close_position(i, px, "breakeven" if pos.be_active else "stop")
-            elif (mk.bh[i] >= pos.target) if pos.side == "long" else (al[i] <= pos.target):
-                close_position(i, pos.target, "target")
-            elif i - pos_fill_i >= params["time_stop_bars"]:
-                close_position(i, mk.bc[i] if pos.side == "long" else ac[i], "time")
-            elif mk.close_minute[i] >= exit_min or mk.close_minute[i] < s_open:
-                close_position(i, mk.bc[i] if pos.side == "long" else ac[i], "session")
-            # Break-even: once price has run +trigger R, move the stop to entry (+ small offset).
-            # It takes effect from the next bar, never inside the bar that triggered it.
-            if pos is not None and var["breakeven"] and not pos.be_active:
+                close_position(i, px, pos.stop_kind)
+            else:
+                for leg in [g for g in pos.legs if g["tp"] is not None]:
+                    hit = (mk.bh[i] >= leg["tp"]) if pos.side == "long" else (al[i] <= leg["tp"])
+                    if hit:
+                        if leg["name"].startswith("tp"):
+                            pos.stage = max(pos.stage, int(leg["name"][2]))
+                        close_legs(i, [leg], leg["tp"], leg["name"])
+                        if pos is None:
+                            break
+                if pos is not None:
+                    last = mk.bc[i] if pos.side == "long" else ac[i]
+                    if pos.stage == 0 and i - pos_fill_i >= params["time_stop_bars"]:
+                        close_position(i, last, "time")
+                    elif mk.close_minute[i] >= exit_min or mk.close_minute[i] < s_open:
+                        close_position(i, last, "session")
+            # Stop updates take effect from the next bar, never inside the bar that caused them.
+            if pos is not None:
                 sign = 1.0 if pos.side == "long" else -1.0
-                trigger = pos.limit + sign * be_trigger * pos.risk_r
-                if (mk.bh[i] >= trigger) if pos.side == "long" else (al[i] <= trigger):
-                    pos.stop = pos.limit + sign * be_offset * pos.risk_r
-                    pos.be_active = True
-                    bump("breakeven_moves")
-                    ev(i, "risk", "ok", f"Trade a +{be_trigger:g}R: stop spostato a break-even "
-                                        f"({pos.stop:.2f}).")
+                pos.peak = better(pos.peak, mk.bh[i] if pos.side == "long" else al[i])
+                if var["exits"] == "be" and not pos.be_active:
+                    trigger = pos.limit + sign * be_trigger * pos.risk_r
+                    if (mk.bh[i] >= trigger) if pos.side == "long" else (al[i] <= trigger):
+                        pos.stop = pos.limit + sign * be_offset * pos.risk_r
+                        pos.be_active, pos.stop_kind = True, "breakeven"
+                        bump("breakeven_moves")
+                        ev(i, "risk", "ok", f"Trade a +{be_trigger:g}R: stop spostato a "
+                                            f"break-even ({pos.stop:.2f}).")
+                elif var["exits"] == "multi" and pos.stage > 0:
+                    old = pos.stop
+                    if pos.stage >= 1 and pos.stop_kind == "stop":
+                        pos.stop, pos.stop_kind = pos.limit + sign * be_offset * pos.risk_r, "breakeven"
+                    if pos.stage >= 2 and pos.stop_kind in ("stop", "breakeven"):
+                        pos.stop, pos.stop_kind = better(pos.stop, pos.tps[0]), "lock"
+                    if pos.stage >= 3:
+                        trail = pos.peak - sign * params["runner_trail_atr"] * mk.atr5[i]
+                        pos.stop, pos.stop_kind = better(better(pos.stop, pos.tps[1]), trail), "trail"
+                    if pos.stop != old:
+                        ev(i, "risk", "ok", f"Stop spostato a {pos.stop:.2f} "
+                                            f"({EXIT_TEXT[pos.stop_kind]}).")
 
         # 2. Pending limit order: fill or cancel.
         if pending is not None and i > pending.placed_i:
@@ -408,6 +498,7 @@ def run_backtest(
                 rs.trades_today += 1
                 bump("fills")
                 ev(i, "exec", "ok", f"Limit eseguito a {p.limit:.2f}. Stop e target sul server.")
+                open_legs(pos)
                 ev(i, "boss", "wait", "Posizione aperta: nuove entrate in pausa.")
                 px = stop_hit(i)
                 if px is not None:

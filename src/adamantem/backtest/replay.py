@@ -51,6 +51,9 @@ def build_replay(mk: Market, res: Result, label: str, meta: dict) -> dict:
                 "reason": t.exit_reason,
                 "equity": _r(t.equity_after),
                 "fvg": [_r(t.fvg_bottom), _r(t.fvg_top)],
+                "tps": [_r(x) for x in t.tps if x is not None],
+                "legs": [[name, lots, _r(price), int(t_min[i]), reason]
+                         for name, lots, price, i, reason in t.legs],
                 "marks": {
                     k: int(t_min[i])
                     for k, i in (("arm", t.arm_i), ("fvg", t.fvg_i), ("break", t.break_i),

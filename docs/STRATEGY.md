@@ -97,8 +97,21 @@ Candles `c1, c2, c3` (c3 is the newest):
   (entry − 0.05R for shorts). The new stop applies from the **next** bar: inside the bar that
   triggered it, the original stop still counts, which is the conservative assumption. An exit
   at the moved stop is reported as `breakeven`, separate from `stop`.
+- **3 take profits + runner (`+3TP` variants, requested by the user):** the position is
+  split into legs of 0.01 lot, assigned in turn to TP1 → TP2 → TP3 → runner (0.04 lot or
+  more gives all four; 0.02 lot gives TP1 and TP2 only). Total risk is unchanged: same volume,
+  same stop.
+  - TP1 = 1R, TP2 = 2R, TP3 = the opposing zone, at least 2.5R and at most 3R.
+  - After TP1: stop to break-even (+0.05R). After TP2: stop to TP1. After TP3: the runner
+    trails at 1.5 × ATR(M5) from the best price, never below TP2.
+  - The 6-hour time stop applies only before TP1; the session exit (20:30 UTC, flat before
+    the weekend) closes the runner too.
+  - Stop moves take effect from the next bar; within a bar the stop is checked before any
+    take profit.
+  - On MT5 this needs a **hedging** account (several positions on one symbol). To verify on
+    the Vantage demo.
 
-## 6. Variants tested (pre-registered; 8 in total)
+## 6. Variants tested (pre-registered; 12 in total)
 | ID | Retest limit price | Trend filter (H1 EMA200) |
 |---|---|---|
 | FVG-A | Top edge of the inverted gap | Off |
@@ -106,8 +119,9 @@ Candles `c1, c2, c3` (c3 is the newest):
 | FVG-C | Midpoint of the gap (50%) | Off |
 | FVG-D | Midpoint | On |
 
-Each of the four is also tested with the break-even stop (`FVG-A+BE` … `FVG-D+BE`), giving
-8 variants. Break-even usually raises the share of trades that don't lose, but it also stops
+Each of the four is tested with three exit styles: single target, break-even
+(`FVG-A+BE` … `FVG-D+BE`) and 3 take profits + runner (`FVG-A+3TP` … `FVG-D+3TP`), giving
+12 variants. Break-even usually raises the share of trades that don't lose, but it also stops
 out trades that would later have reached the target. The test measures whether the net
 effect on average R is positive, instead of assuming it.
 
@@ -117,8 +131,8 @@ compared with FVG setups alone. Deciding afterwards to drop a context counts as 
 test. It is logged and confirmed on the holdout before it is accepted.
 
 The edge fills more often. The midpoint gives a better price and a smaller stop, but misses
-more trades. The test measures this trade-off instead of guessing. Because 8 variants are
-tested, the best one must beat random entry at p < 0.00625 (Bonferroni, 0.05 / 8).
+more trades. The test measures this trade-off instead of guessing. Because 12 variants are
+tested, the best one must beat random entry at p < 0.0042 (Bonferroni, 0.05 / 12).
 
 ## 7. Validation protocol (fixed before any results are seen)
 1. **Data:** ≥ 4 years of M1 XAUUSD resampled to M5/H1. The last 12 months are a holdout,

@@ -56,8 +56,11 @@ def test_trade_invariants(cfg, market, variant):
             assert t.pnl > 0
         if t.exit_reason == "stop":
             assert t.r_multiple < 0
-        if t.exit_reason == "breakeven":
+        if t.exit_reason == "breakeven" and len(t.legs) == 1:
             assert -0.5 < t.r_multiple < 0.5
+        if any(leg[4] == "tp1" for leg in t.legs):
+            assert t.r_multiple > -0.1  # TP1 banked, rest protected at break-even or better
+        assert abs(sum(leg[1] for leg in t.legs) - t.volume) < 1e-9
         assert t.volume >= 0.01
 
 
@@ -118,3 +121,15 @@ def test_breakeven_changes_only_be_variants(cfg, market):
     if be.counters.get("breakeven_moves"):
         assert any(t.exit_reason in ("breakeven", "target", "time", "session") for t in be.trades)
     assert prof["risk_per_trade_pct"] == 1.0
+
+
+def test_three_take_profits_split_and_order(cfg, market):
+    res = _run(cfg, market, "FVG-A+3TP", "max")
+    multi = [t for t in res.trades if round(t.volume / 0.01) >= 4]
+    for t in res.trades:
+        sign = 1 if t.side == "long" else -1
+        tp1, tp2, tp3 = t.tps
+        assert sign * (tp1 - t.entry) > 0 and sign * (tp2 - tp1) > 0 and sign * (tp3 - tp2) >= 0
+    for t in multi:  # with 0.04 lot or more, a runner leg exists
+        names = {leg[0] for leg in t.legs}
+        assert names == {"tp1", "tp2", "tp3", "runner"}

@@ -137,7 +137,8 @@ footer { color: var(--muted); font-size: 12.5px; display: grid; gap: 4px; }
         <span><i style="background:rgba(116,166,214,.45)"></i>FVG invertito</span>
         <span><i style="background:var(--gold)"></i>entrata</span>
         <span><i style="background:var(--bad)"></i>stop</span>
-        <span><i style="background:var(--ok)"></i>target</span>
+        <span><i style="background:var(--ok)"></i>target / TP1–TP3</span>
+        <span>● chiusura di una parte</span>
         <span>A armato · R rottura · E entrata · X uscita</span>
       </div>
     </div>
@@ -370,7 +371,7 @@ document.getElementById("next").addEventListener("click", () => { advance(); acc
 // ---------- replay of a real backtest run ----------
 const daySel = document.getElementById("day");
 const hhmm = m => new Date(m * 60000).toISOString().slice(11, 16);
-const REASON = { stop: "stop", breakeven: "break-even", target: "target", time: "6 ore", session: "fine sessione" };
+const REASON = { stop: "stop", breakeven: "break-even", lock: "stop su TP1", trail: "runner (stop mobile)", target: "target", tp1: "TP1", tp2: "TP2", tp3: "TP3", time: "6 ore", session: "fine sessione" };
 
 function setMode(m) {
   mode = m;
@@ -412,7 +413,8 @@ function renderTrades(day) {
     b.innerHTML = `<span class="side ${t.side === "long" ? "s-ok" : "s-bad"}">${t.side === "long" ? "LONG" : "SHORT"}</span>
       <span>${hhmm(t.marks.fill)}–${hhmm(t.marks.exit)} · ${t.context} · uscita ${REASON[t.reason]}</span>
       <span class="r ${cls}">${t.r > 0 ? "+" : ""}${t.r.toFixed(2)}R</span>
-      <span class="detail">entrata ${t.entry} · stop ${t.stop} · target ${t.target} · ${t.volume.toFixed(2)} lotti · $${t.pnl > 0 ? "+" : ""}${t.pnl} · conto $${t.equity}</span>`;
+      <span class="detail">entrata ${t.entry} · stop ${t.stop} · ${(t.tps && t.tps.length > 1) ? t.tps.map((p, k) => `TP${k + 1} ${p}`).join(" · ") : "target " + t.target} · ${t.volume.toFixed(2)} lotti · $${t.pnl > 0 ? "+" : ""}${t.pnl} · conto $${t.equity}</span>
+      ${(t.legs && t.legs.length > 1) ? `<span class="detail">${t.legs.map(l => `${l[0] === "runner" ? "runner" : l[0].toUpperCase()} ${l[1].toFixed(2)} → ${l[2]} (${REASON[l[4]] || l[4]})`).join(" · ")}</span>` : ""}`;
     b.addEventListener("click", () => {
       box.querySelectorAll(".trade").forEach(x => x.classList.remove("sel"));
       b.classList.add("sel");
@@ -436,8 +438,9 @@ function drawTrade(t) {
   const css = n => getComputedStyle(document.documentElement).getPropertyValue("--" + n).trim();
   const padL = 6, padR = 58, padT = 24, padB = 18;
   const bars = t.bars;
-  let lo = Math.min(...bars.map(b => b[3]), t.stop, t.target);
-  let hi = Math.max(...bars.map(b => b[2]), t.stop, t.target);
+  const tps = (t.tps && t.tps.length) ? t.tps : [t.target];
+  let lo = Math.min(...bars.map(b => b[3]), t.stop, ...tps);
+  let hi = Math.max(...bars.map(b => b[2]), t.stop, ...tps);
   const span = hi - lo; lo -= span * 0.05; hi += span * 0.05;
   const y = p => padT + (hi - p) / (hi - lo) * (chh - padT - padB);
   const step = (cw - padL - padR) / bars.length;
@@ -475,10 +478,17 @@ function drawTrade(t) {
   }
   // entry / stop / target from fill to exit
   const xf = xOf(t.marks.fill) - step / 2, xe = xOf(t.marks.exit) + step / 2;
-  for (const [p, col, name] of [[t.entry, css("gold"), "E"], [t.stop, css("bad"), "SL"], [t.target, css("ok"), "TP"]]) {
+  const lines = [[t.entry, css("gold"), "E"], [t.stop, css("bad"), "SL"],
+    ...tps.map((p, k) => [p, css("ok"), tps.length > 1 ? "TP" + (k + 1) : "TP"])];
+  for (const [p, col, name] of lines) {
     g.strokeStyle = col; g.lineWidth = 1.5; g.setLineDash(name === "E" ? [] : [4, 3]);
     g.beginPath(); g.moveTo(xf, y(p)); g.lineTo(xe, y(p)); g.stroke();
     g.setLineDash([]); g.fillStyle = col; g.fillText(name, xe + 3, y(p) + 4);
+  }
+  // where each leg was closed
+  for (const l of (t.legs || [])) {
+    g.fillStyle = l[4].startsWith("tp") || l[4] === "trail" || l[4] === "lock" ? css("ok") : css("fg");
+    g.beginPath(); g.arc(xOf(l[3]), y(l[2]), 3.5, 0, Math.PI * 2); g.fill();
   }
   // event marks
   g.lineWidth = 1;
