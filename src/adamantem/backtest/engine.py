@@ -215,6 +215,7 @@ def run_backtest(
     start_equity: float = 500.0,
     extra_spread: float = 0.0,
     record_events: bool = False,
+    trade_start: pd.Timestamp | None = None,
 ) -> Result:
     var = VARIANTS[variant]
     n = len(mk.t_open)
@@ -251,6 +252,8 @@ def run_backtest(
             events.append((int(i), bot, state, text))
 
     def in_entry_window(i: int) -> bool:
+        if trade_start is not None and mk.t_open[i] < trade_start:
+            return False  # warm-up data only: indicators and zones, no trading
         m, wd = mk.close_minute[i], mk.close_weekday[i]
         if not (s_open <= m < s_close) or (r_open <= m < r_close):
             return False

@@ -174,6 +174,137 @@ def backtest(args: argparse.Namespace) -> Path:
     return report
 
 
+# Frozen before the holdout was looked at; see docs/HOLDOUT.md.
+HOLDOUT_FROZEN = {
+    "variant": "FVG-D",
+    "strategy": {"allow_no_zone_setups": False, "zone_model": "ob_fvg"},
+    "primary_profile": "standard",
+    "criteria": {"min_trades": 30, "min_avg_r": 0.10, "min_profit_factor": 1.15},
+}
+
+
+def _load_or_exit(start: date, end: date, args: argparse.Namespace, out: Path) -> pd.DataFrame:
+    try:
+        return load_m1(start, end, Path(args.cache), None, "histdata", args.assumed_spread)
+    except histdata.HistDataError as exc:
+        msg = f"# Holdout not run: HistData download failed\n\n{exc}\n"
+        (out / "download_status.md").write_text(msg)
+        print(msg)
+        raise SystemExit(3) from None
+
+
+def holdout(args: argparse.Namespace) -> Path:
+    """Run the single frozen configuration on the untouched holdout year (and, for
+    comparison, on the in-sample period). Trading starts at the holdout start; earlier data
+    only warms up indicators and zones."""
+    cfg = load_config(Path(args.config))
+    frozen = HOLDOUT_FROZEN
+    params = {**cfg["strategy"], **frozen["strategy"], "variant": frozen["variant"]}
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    spec = SymbolSpec()
+    periods = {
+        "in-sample": (date(2021, 11, 1), date(2025, 11, 1), date(2021, 11, 1)),
+        "holdout": (date(2025, 8, 1), date.fromisoformat(args.end), date(2025, 11, 1)),
+    }
+    rows, details, replay_res = [], {}, None
+    data_info = {}
+    for period, (load_start, end, trade_from) in periods.items():
+        m1 = _load_or_exit(load_start, end, args, out)
+        q = check_m1(m1)
+        if not q.ok:
+            raise SystemExit(f"Data quality check failed: {q}")
+        data_info[period] = (q, trade_from)
+        mk = build_market(m1, params, cfg["scanner"])
+        ts = pd.Timestamp(trade_from, tz="UTC")
+        for scen, extra in SPREAD_SCENARIOS.items():
+            for prof_name, prof in cfg["risk"]["profiles"].items():
+                primary = scen == "base" and prof_name == frozen["primary_profile"]
+                res = run_backtest(
+                    mk, params, cfg["scanner"], cfg["risk"], prof, frozen["variant"], spec,
+                    start_equity=args.equity, extra_spread=extra,
+                    record_events=primary and period == "holdout", trade_start=ts,
+                )
+                df = trades_frame(res)
+                s = summarize(df, args.equity)
+                rows.append({"period": period, "spread": scen, "profile": prof_name, **s,
+                             "halted": str(res.halted_at.date()) if res.halted_at else "-"})
+                if primary:
+                    details[period] = (df, res)
+                    if period == "holdout":
+                        replay_res = (mk, res)
+
+    crit = frozen["criteria"]
+    hd, hres = details["holdout"]
+    hs = summarize(hd, args.equity)
+    checks = [
+        ("Trades ≥ %d" % crit["min_trades"], hs.get("trades", 0), hs.get("trades", 0) >= crit["min_trades"]),
+        ("Average R ≥ +%.2f" % crit["min_avg_r"], hs.get("avg_r", float("nan")),
+         hs.get("trades", 0) > 0 and hs["avg_r"] >= crit["min_avg_r"]),
+        ("Profit factor ≥ %.2f" % crit["min_profit_factor"], hs.get("profit_factor", float("nan")),
+         hs.get("trades", 0) > 0 and hs["profit_factor"] >= crit["min_profit_factor"]),
+        ("No kill switch", hres.halted_at or "none", hres.halted_at is None),
+    ]
+    passed = all(ok for _, _, ok in checks)
+    r = hd.r_multiple if len(hd) else pd.Series(dtype=float)
+    t_stat = r.mean() / (r.std(ddof=1) / len(r) ** 0.5) if len(r) > 2 else float("nan")
+
+    lines = [
+        "# Holdout test - frozen configuration",
+        "",
+        f"Generated {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC. Start equity ${args.equity:.0f}.",
+        "",
+        f"## Verdict: **{'PASSED' if passed else 'FAILED'}**",
+        "",
+        "Configuration and criteria were committed in docs/HOLDOUT.md before this run. "
+        f"Variant {frozen['variant']}, zone setups only (order blocks + FVG H1/H4), single exit, "
+        f"primary profile {frozen['primary_profile']}, assumed spread ${args.assumed_spread:.2f} "
+        "(HistData bid + constant spread, not Vantage data).",
+        "",
+        "| Criterion | Holdout value | Pass |",
+        "|---|---|---|",
+        *[f"| {name} | {_fmt(v)} | {'yes' if ok else 'NO'} |" for name, v, ok in checks],
+        "",
+        f"t-statistic of mean R on the holdout: {t_stat:.2f} (informational).",
+        "",
+        "## Data",
+        *[f"- {p}: {q.rows:,} M1 rows, {q.first} → {q.last}; trading from {tf}"
+          for p, (q, tf) in data_info.items()],
+        "",
+        "## All runs of the frozen configuration",
+        "",
+    ]
+    cols = ["period", "spread", "profile", "trades", "win_rate", "avg_r", "profit_factor",
+            "return_pct", "max_dd_pct", "longest_losing_streak", "halted"]
+    table = pd.DataFrame(rows).reindex(columns=cols)
+    lines.append("| " + " | ".join(cols) + " |")
+    lines.append("|" + "---|" * len(cols))
+    for _, row in table.iterrows():
+        lines.append("| " + " | ".join(_fmt(row[c]) for c in cols) + " |")
+    for period, (df, res) in details.items():
+        lines += ["", f"## {period}: primary run detail", ""]
+        if not df.empty:
+            df = df.assign(month=pd.to_datetime(df.entry_time).dt.strftime("%Y-%m"))
+            lines += ["By zone type:", "", breakdown(df, "zone_kind").round(3).to_markdown(), ""]
+            lines += ["By side:", "", breakdown(df, "side").round(3).to_markdown(), ""]
+            if period == "holdout":
+                lines += ["By month:", "", breakdown(df, "month").round(3).to_markdown(), ""]
+        lines += ["Pipeline counters:", "", "```"]
+        lines += [f"{k}: {v}" for k, v in sorted(res.counters.items())]
+        lines += ["```"]
+
+    mk, res = replay_res
+    label = f"HOLDOUT · {frozen['variant']} solo zone · {frozen['primary_profile']} · dati HistData"
+    meta = {"variant": frozen["variant"], "profile": frozen["primary_profile"],
+            "start": "2025-11-01", "end": args.end, "equity": args.equity, "in_sample": False,
+            "generated": f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC"}
+    write_replay(out / "replay.json", build_replay(mk, res, label, meta))
+    report = out / "backtest_holdout.md"
+    report.write_text("\n".join(lines))
+    print("\n".join(lines[:30]))
+    return report
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="adamantem")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -188,9 +319,18 @@ def main() -> None:
                     help="HistData has no ask: constant spread in $ added to bid")
     bt.add_argument("--out", default=str(ROOT / "reports"))
     bt.add_argument("--download-budget-min", type=float, default=None)
+    ho = sub.add_parser("holdout", help="frozen configuration on the untouched holdout year")
+    ho.add_argument("--end", default="2026-11-01")
+    ho.add_argument("--equity", type=float, default=500.0)
+    ho.add_argument("--config", default=str(ROOT / "config" / "default.yaml"))
+    ho.add_argument("--cache", default=str(ROOT / "data" / "raw"))
+    ho.add_argument("--assumed-spread", type=float, default=0.25)
+    ho.add_argument("--out", default=str(ROOT / "reports"))
     args = parser.parse_args()
     if args.cmd == "backtest":
         backtest(args)
+    elif args.cmd == "holdout":
+        holdout(args)
 
 
 if __name__ == "__main__":

@@ -116,6 +116,8 @@ def download_m1(
                 break
             raw = fetch_zip(pair, f"{year}/{month}", cache_dir)
             if raw is None:
+                if year == end.year:
+                    break  # the most recent month(s) may not be published yet
                 raise HistDataError(f"no HistData file for {pair} {year}-{month:02d}")
             frames.append(parse_zip(raw))
     if not frames:
