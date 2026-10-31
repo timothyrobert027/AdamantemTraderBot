@@ -50,6 +50,7 @@ def test_risk_profiles_within_hard_ceilings():
         for key, ceiling in HARD_CEILINGS.items():
             assert 0 < profile[key] <= ceiling, f"{name}.{key}"
         assert profile["min_free_margin_pct"] >= 50.0
+    assert risk["min_lot_risk_cap_pct"] <= HARD_CEILINGS["risk_per_trade_pct"]
     assert risk["max_open_positions"] <= 2
     assert risk["max_trades_per_day"] <= 5
 

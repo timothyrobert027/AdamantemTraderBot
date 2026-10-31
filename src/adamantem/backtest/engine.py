@@ -53,7 +53,7 @@ REJECT_TEXT = {
     "invalid_stop": ("risk", "NO: stop non valido."),
     "spread_vs_stop": ("risk", "NO: lo spread supera il 10% dello stop."),
     "no_room": ("risk", "NO: la zona opposta è a meno di 2R."),
-    "min_lot_exceeds_risk": ("risk", "NO: anche 0,01 lotti rischierebbe troppo."),
+    "min_lot_exceeds_risk": ("risk", "NO: anche 0,01 lotti rischierebbe oltre il 5%."),
     "leverage_cap": ("risk", "NO: supererebbe il tetto di leva."),
     "free_margin": ("risk", "NO: margine libero insufficiente."),
 }
@@ -356,6 +356,7 @@ def run_backtest(
             est_slippage=0.5 * spread[i],
             max_effective_leverage=profile["max_effective_leverage"],
             min_free_margin_pct=profile["min_free_margin_pct"],
+            min_lot_risk_cap_pct=risk.get("min_lot_risk_cap_pct"),
         )
         if not size.ok:
             return reject(size.reason)

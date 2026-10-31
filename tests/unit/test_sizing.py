@@ -20,6 +20,15 @@ def test_rejects_when_min_lot_too_risky():
     assert not r.ok and r.reason == "min_lot_exceeds_risk"
 
 
+def test_min_lot_allowed_up_to_cap():
+    # 1% target ($5) but 0.01 lot risks $10 (2%): taken because the cap is 5% ($25)
+    r = size_position(500.0, 1.0, 2000.0, 1990.0, SPEC, 0.0, 20.0, 50.0, min_lot_risk_cap_pct=5.0)
+    assert r.ok and r.volume == 0.01 and abs(r.risk_money - 10.0) < 1e-9
+    # 0.01 lot risking $30 (6%) is still rejected
+    r = size_position(500.0, 1.0, 2000.0, 1970.0, SPEC, 0.0, 20.0, 50.0, min_lot_risk_cap_pct=5.0)
+    assert not r.ok and r.reason == "min_lot_exceeds_risk"
+
+
 def test_leverage_cap_limits_volume():
     r = size(entry=4000.0, stop=3999.0)  # 0.15 lot by risk, cap 20x$500/$400k per lot = 0.025
     assert r.ok and r.volume == 0.02
@@ -38,8 +47,9 @@ def test_leverage_cap_can_reject():
     slip=st.floats(0, 1),
 )
 def test_risk_never_exceeds_budget(equity, risk, entry, dist, slip):
-    r = size_position(equity, risk, entry, entry - dist, SPEC, slip, 20.0, 50.0)
+    r = size_position(equity, risk, entry, entry - dist, SPEC, slip, 20.0, 50.0,
+                      min_lot_risk_cap_pct=5.0)
     if r.ok:
-        assert r.risk_money <= equity * risk / 100 + 1e-6
+        assert r.risk_money <= equity * max(risk, 5.0 if r.volume == SPEC.volume_min else 0) / 100 + 1e-6
         assert r.volume >= SPEC.volume_min
         assert r.volume * entry * SPEC.contract_size <= 20.0 * equity + 1e-6

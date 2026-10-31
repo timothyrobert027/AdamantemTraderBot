@@ -86,6 +86,7 @@ risk:
       max_drawdown_kill_pct: 40.0
       max_effective_leverage: 50.0
       min_free_margin_pct: 50.0
+  min_lot_risk_cap_pct: 5.0      # if 0.01 lot risks more than the profile's %, still trade it up to 5%
   max_open_positions: 1
   max_trades_per_day: 3
   max_consecutive_losses: 3

@@ -46,8 +46,11 @@ down means the *actual* risk often sits below the target. Example at 3% ($15) wi
 raw size 0.0375 → 0.03 lot → actual risk $12 (2.4%). The journal records target and actual
 risk for every trade, and the backtest uses actual risk, so results aren't overstated.
 
-**Rule: if the minimum volume would risk more than allowed, REJECT the trade. Size is never
-rounded up.**
+**Rule (updated at the user's request): if even the minimum volume (0.01 lot) would risk more
+than the profile's target, the trade is taken at 0.01 lot as long as that risk is at most 5%
+of equity. Above 5% it is rejected.** Size is otherwise never rounded up. In practice the
+standard profile's real risk per trade can therefore range from 1% up to 5%. The journal and
+the replay show the actual risk of every trade.
 
 ## 3. Sizing formula (`risk/sizing.py`)
 ```

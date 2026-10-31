@@ -1,7 +1,8 @@
 """Spec-driven fixed-fractional position sizing. See docs/RISK.md §3.
 
-Volume is always rounded DOWN to the volume step; a trade that cannot be sized within the
-allowed risk, leverage and margin is rejected, never rounded up.
+Volume is always rounded DOWN to the volume step. If even the minimum volume risks more than
+the target, the trade is taken at the minimum volume only while that risk stays within
+``min_lot_risk_cap_pct`` (user choice: 5%); above it, or beyond leverage/margin, it is rejected.
 """
 
 from __future__ import annotations
@@ -45,6 +46,7 @@ def size_position(
     est_slippage: float,
     max_effective_leverage: float,
     min_free_margin_pct: float,
+    min_lot_risk_cap_pct: float | None = None,
 ) -> SizeResult:
     distance = abs(entry - stop)
     if distance <= 0:
@@ -55,7 +57,10 @@ def size_position(
     steps = math.floor(budget / loss_per_lot / spec.volume_step + 1e-9)
     volume = round(min(steps * spec.volume_step, spec.volume_max), 8)
     if volume < spec.volume_min:
-        return SizeResult(0.0, 0.0, "min_lot_exceeds_risk")
+        cap = equity * (min_lot_risk_cap_pct or 0.0) / 100.0
+        if spec.volume_min * loss_per_lot > cap:
+            return SizeResult(0.0, 0.0, "min_lot_exceeds_risk")
+        volume = spec.volume_min
     notional_per_lot = entry * spec.contract_size
     max_by_leverage = max_effective_leverage * equity / notional_per_lot
     if volume > max_by_leverage:
