@@ -51,3 +51,24 @@ Trades per month, monthly growth, drawdown, for every S variant and the swing co
 all three risk profiles and both spreads. Data: HistData M1 bid + assumed constant spread,
 not Vantage's feed. Scalping is the most spread-sensitive part of this project, so a pass
 must be re-checked on Vantage's real spreads before any demo.
+
+---
+
+## Result (run 41212262910, 2026-10-31) — appended after the run, rules unchanged
+
+**Verdict: NO CANDIDATE.** No scalping variant reached 200 trades in development, so per the
+selection rule the experiment stopped before validation. The 2016-2020 data remains unused.
+
+Development, standard profile, $0.25 spread:
+
+| Config | Trades | Trades/month | Win rate | Avg R | PF | Return | Kill switch |
+|---|---|---|---|---|---|---|---|
+| S-A (M1, M15+H1+H4) | 86 | 1.8 | 33% | −0.23 | 0.67 | −14% | 2023-03-09 |
+| S-B (M1, H1+H4) | 80 | 1.7 | 31% | −0.19 | 0.62 | −13% | 2025-02-25 |
+| S-C (M5, M15+H1+H4) | 130 | 2.7 | 49% | +0.07 | 1.19 | +16% | — |
+| Swing (validated) | 58 | 1.2 | 47% | +0.29 | 1.51 | +22% | — |
+
+Observations: M1 entries lost money (win rate ~32% against ~40% needed for a 1.5R target) and
+hit the kill switch, which also cut their trade count. M15 zones roughly doubled the trade
+count on M5 but lowered the average R from +0.29 to +0.07. With the $0.45 spread every
+scalping variant was negative or flat.
