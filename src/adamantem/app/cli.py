@@ -332,7 +332,17 @@ def main() -> None:
     sc.add_argument("--cache", default=str(ROOT / "data" / "raw"))
     sc.add_argument("--assumed-spread", type=float, default=0.25)
     sc.add_argument("--out", default=str(ROOT / "reports"))
+    s2 = sub.add_parser("scalp2", help="scalping hypothesis S2 + third swing test (2016-2020)")
+    s2.add_argument("--equity", type=float, default=500.0)
+    s2.add_argument("--config", default=str(ROOT / "config" / "default.yaml"))
+    s2.add_argument("--cache", default=str(ROOT / "data" / "raw"))
+    s2.add_argument("--assumed-spread", type=float, default=0.25)
+    s2.add_argument("--out", default=str(ROOT / "reports"))
     args = parser.parse_args()
+    if args.cmd == "scalp2":
+        from adamantem.app import scalp2
+
+        scalp2.run(args, load_m1, load_config)
     if args.cmd == "scalp":
         from adamantem.app import scalp
 

@@ -6,7 +6,7 @@ higher-timeframe values come from the last H1/H4 bar that had closed by then.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -15,6 +15,7 @@ from adamantem.data.resample import TIMEFRAMES, resample
 from adamantem.indicators.ta import atr, ema, rolling_percentile_rank
 from adamantem.strategy.fvg import FVG, detect_fvgs
 from adamantem.strategy.htf_zones import detect_ob_fvg_zones
+from adamantem.strategy.orb import orb_signals
 from adamantem.strategy.zones import Zone, detect_zones
 
 MINUTES_PER_DAY = 1440
@@ -48,6 +49,7 @@ class Market:
     zone_touch: dict[int, list[int]]  # M5 index -> zone ids touched for the first time
     zone_fresh_end: dict[int, list[int]]  # M5 index -> zone ids no longer fresh
     zone_valid_end: dict[int, list[int]]  # M5 index -> zone ids no longer valid
+    signals: dict = field(default_factory=dict)  # entry index -> opening-range signals
 
 
 def _map_htf(htf: pd.DataFrame, step: str, values: dict[str, pd.Series], m5_close) -> dict:
@@ -116,14 +118,27 @@ def build_market(m1: pd.DataFrame, params: dict, scanner: dict) -> Market:
         hit = np.flatnonzero(seg)
         starts.setdefault(s, []).append(z.zid)
         valid_end.setdefault(e, []).append(z.zid)
-        if len(hit):
+        max_touches = params.get("zone_max_touches", 1)
+        if max_touches > 1 and len(hit):
+            # every fresh entry into the zone (previous bar outside it) re-arms, up to N times
+            entries = hit[np.r_[True, np.diff(hit) > 1]][:max_touches]
+            z.touch_index = s + int(entries[0])
+            for k in entries:
+                touches.setdefault(s + int(k), []).append(z.zid)
+            fresh_end.setdefault(e, []).append(z.zid)
+        elif len(hit):
             z.touch_index = s + int(hit[0])
             touches.setdefault(z.touch_index, []).append(z.zid)
             fresh_end.setdefault(z.touch_index, []).append(z.zid)
         else:
             fresh_end.setdefault(e, []).append(z.zid)
 
+    signals = {}
+    if params.get("orb_enabled", False):
+        signals = orb_signals(t_open, bh, bl, m5["bid_close"].to_numpy(), atr5.to_numpy(), params)
+
     return Market(
+        signals=signals,
         t_open=t_open,
         bar=bar,
         bo=m5["bid_open"].to_numpy(),

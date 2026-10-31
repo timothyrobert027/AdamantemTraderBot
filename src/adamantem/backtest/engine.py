@@ -18,7 +18,7 @@ import pandas as pd
 from adamantem.backtest.market import Market
 from adamantem.risk.sizing import SymbolSpec, size_position
 
-PRIORITY = {"H4+H1": 4, "H4": 3, "H1": 2, "M15": 1, "NONE": 0}
+PRIORITY = {"H4+H1": 4, "H4": 3, "H1": 2, "M15": 1, "NONE": 0, "TREND": 0, "ORB": 0}
 _BASE_VARIANTS = {
     "FVG-A": {"retest_price": "edge", "trend_filter": False},
     "FVG-B": {"retest_price": "edge", "trend_filter": True},
@@ -372,13 +372,18 @@ def run_backtest(
             return max(ao[k], pos.stop) + slip
         return None
 
-    def _plan(side: str, i: int, a: Armed, f) -> None:
-        """A close through the reference FVG: try to place the retest limit order."""
+    def _plan(side: str, i: int, a: Armed, f, orb=None) -> None:
+        """A close through the reference FVG (or an opening-range breakout signal): try to
+        place the retest limit order."""
         nonlocal pending
         bump(f"break_{a.context}")
         word = "sopra" if side == "long" else "sotto"
-        ev(i, "sniper", "work",
-           f"Chiusura M5 {word} l'FVG {f.bottom:.2f}–{f.top:.2f}: inversione. Chiedo l'ok sul rischio.")
+        if orb is None:
+            ev(i, "sniper", "work", f"Chiusura M5 {word} l'FVG {f.bottom:.2f}–{f.top:.2f}: "
+                                    "inversione. Chiedo l'ok sul rischio.")
+        else:
+            ev(i, "sniper", "work", f"Rottura del range di apertura {orb.session} ({word} "
+                                    f"{orb.limit:.2f}). Chiedo l'ok sul rischio.")
 
         def reject(reason: str) -> None:
             bump(f"reject_{reason}")
@@ -403,7 +408,9 @@ def run_backtest(
             return reject("trend_filter")
         edge = var["retest_price"] == "edge"
         buf = params["sl_buffer_atr"] * atr5
-        if side == "long":
+        if orb is not None:
+            limit, stop = orb.limit, orb.stop
+        elif side == "long":
             limit = f.top if edge else f.mid
             stop = min(a.extreme, mk.bl[i]) - buf
         else:
@@ -439,9 +446,11 @@ def run_backtest(
             return reject(size.reason)
         pending = Pending(
             side=side, placed_i=i, expire_i=i + params["retest_window_bars"], limit=limit,
-            stop=stop, target=target, risk_r=r, gap_bottom=f.bottom, gap_top=f.top,
+            stop=stop, target=target, risk_r=r,
+            gap_bottom=orb.gap_bottom if orb else f.bottom, gap_top=orb.gap_top if orb else f.top,
             volume=size.volume, risk_money=size.risk_money, context=a.context,
-            arm_i=a.arm_i, fvg_i=f.index, zone_ids=a.zone_ids, orig_stop=stop,
+            arm_i=a.arm_i, fvg_i=orb.range_index if orb else f.index, zone_ids=a.zone_ids,
+            orig_stop=stop,
         )
         bump("orders_placed")
         pct = 100 * size.risk_money / rs.equity
@@ -556,6 +565,10 @@ def run_backtest(
                         _plan(side, i, a, f)
                         armed[side] = None
 
+        # 4b. Opening-range breakout signals (scalping family C).
+        for sig in mk.signals.get(i, ()):
+            _plan(sig.side, i, Armed(sig.range_index, i, "ORB", float("nan")), None, sig)
+
         # 5. Arming.
         for side, zside in (("long", "demand"), ("short", "supply")):
             a = armed[side]
@@ -623,7 +636,13 @@ def run_backtest(
         for side, fv in (("long", mk.bear[i]), ("short", mk.bull[i])):
             if fv is not None:
                 last_fvg[side] = fv
-                if armed[side] is not None:
+                if params.get("arm_mode") == "trend":
+                    # family A: every new opposing FVG is a setup; stop beyond its 3 candles
+                    lo = max(fv.index - 2, 0)
+                    ext = mk.bl[lo:i + 1].min() if side == "long" else mk.bh[lo:i + 1].max()
+                    armed[side] = Armed(lo, i + params["arm_window_bars"], "TREND", ext, fv)
+                    bump("arm_TREND")
+                elif armed[side] is not None:
                     armed[side].ref = fv
                     ev(i, "sniper", "work", f"Nuovo FVG di riferimento {fv.bottom:.2f}–{fv.top:.2f}.")
 
