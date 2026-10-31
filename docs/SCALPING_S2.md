@@ -49,3 +49,28 @@ A funnel per family (setups, breaks, orders and fills per day; main rejection re
 trades per day, monthly growth, drawdown, all profiles and both spreads. Data: HistData bid
 + assumed constant $0.25 spread (gold traded at $1,050-2,070 in 2016-2020, so the same
 dollar spread is relatively larger than in 2025).
+
+---
+
+## Result (run 41216032793, 2026-10-31) — appended after the run, rules unchanged
+
+**S2: NO CANDIDATE.** In development every family lost money per trade and none reached
+1.5 trades per day; S2 was not validated.
+
+| Family (dev, standard, $0.25) | Setups/day | Orders/day | Trades/day | Avg R | PF | Kill switch |
+|---|---|---|---|---|---|---|
+| S2-A trend FVG | 18.9 | 0.57 | 0.32 | −0.04 | 0.94 | 2022-10-21 |
+| S2-B re-tested zones | 8.8 | 0.31 | 0.18 | −0.07 | 0.88 | 2024-01-11 |
+| S2-C opening range | 2.2 | 0.17 | 0.11 | −0.12 | 0.80 | 2022-12-21 |
+| S2-AC | 21.1 | 0.59 | 0.34 | −0.03 | 0.96 | 2022-09-30 |
+| Swing (validated) | 1.9 | 0.10 | 0.06 | +0.29 | 1.51 | — |
+
+Most setups were filtered out by the session window; after the kill switch fired, every later
+setup was rejected, which is why trades per day stayed low. Before that, the per-trade result
+was already slightly negative. With the $0.45 spread all families lost clearly.
+
+**Swing configuration on 2016-2020: FAILED.** 14 trades (criterion ≥ 30), average R −0.46,
+profit factor 0.38, no kill switch. All 14 trades are from 2020; in 2016-2019 the spread
+filter (spread ≤ 10% of ATR(M5), with a constant $0.25 spread) rejected almost every setup
+because gold's 5-minute ranges were small. Combined with the earlier results, the swing
+configuration has only shown an edge in the high-volatility years 2024-2026.
