@@ -56,12 +56,15 @@ def parse_day(raw: bytes, day: date, divisor: float) -> pd.DataFrame:
     return frame[frame["volume"] > 0]
 
 
-def _fetch(url: str, dest: Path, retries: int = 4) -> bytes:
+def _fetch(url: str, dest: Path, retries: int = 8) -> bytes:
+    """Fetch one file with caching; backs off on rate limiting (HTTP 429/503) and timeouts."""
     if dest.exists():
         return dest.read_bytes()
+    request = urllib.request.Request(url, headers={"User-Agent": "adamantem-research/0.1"})
     for attempt in range(retries):
+        wait = min(2 ** (attempt + 1), 60)
         try:
-            with urllib.request.urlopen(url, timeout=30) as resp:
+            with urllib.request.urlopen(request, timeout=30) as resp:
                 raw = resp.read()
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(raw)
@@ -69,17 +72,20 @@ def _fetch(url: str, dest: Path, retries: int = 4) -> bytes:
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
                 return b""
-            if attempt == retries - 1:
+            if exc.code not in (429, 500, 502, 503, 504) or attempt == retries - 1:
                 raise
+            retry_after = exc.headers.get("Retry-After") if exc.headers else None
+            if retry_after and retry_after.isdigit():
+                wait = max(wait, int(retry_after))
         except (urllib.error.URLError, TimeoutError):
             if attempt == retries - 1:
                 raise
-        time.sleep(2 ** (attempt + 1))
+        time.sleep(wait)
     return b""
 
 
 def download_m1(
-    symbol: str, start: date, end: date, cache_dir: Path, workers: int = 8
+    symbol: str, start: date, end: date, cache_dir: Path, workers: int = 3
 ) -> pd.DataFrame:
     """Return M1 bars with bid_* and ask_* OHLC columns for [start, end)."""
     divisor = PRICE_DIVISOR[symbol]
@@ -93,7 +99,11 @@ def download_m1(
 
     jobs = [(d, s) for d in days for s in ("BID", "ASK")]
     with ThreadPoolExecutor(workers) as pool:
-        frames = list(pool.map(load, jobs))
+        frames = []
+        for n, frame in enumerate(pool.map(load, jobs), 1):
+            frames.append(frame)
+            if n % 200 == 0:
+                print(f"downloaded {n}/{len(jobs)} day files", flush=True)
     bid = pd.concat(frames[0::2])
     ask = pd.concat(frames[1::2])
     m1 = bid.add_prefix("bid_").join(ask.drop(columns="volume").add_prefix("ask_"), how="inner")

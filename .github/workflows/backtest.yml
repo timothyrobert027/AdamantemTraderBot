@@ -26,19 +26,28 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: data/raw/dukascopy
-          key: dukascopy-xauusd-${{ inputs.start }}-${{ inputs.end }}
+          key: dukascopy-xauusd-${{ github.run_id }}
+          restore-keys: dukascopy-xauusd-
       - run: pip install -e .
       - run: >
           python -m adamantem.app.cli backtest
           --start "${{ inputs.start }}" --end "${{ inputs.end }}"
+      - name: Save downloaded data (even if the run failed)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data/raw/dukascopy
+          key: dukascopy-xauusd-${{ github.run_id }}
       - name: Publish summary
+        if: success()
         run: |
           f=$(ls -t reports/backtest_*.md | head -1)
           cat "$f" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: backtest-report
           path: reports/
