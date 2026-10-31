@@ -1,4 +1,4 @@
-# Strategy v1 — "H1 Supply/Demand Zones + M5 FVG Inversion Retest" (hypothesis, not yet validated)
+# Strategy v1 — "H4/H1 Supply/Demand Zones + M5 FVG Inversion Retest" (hypothesis, not yet validated)
 
 This strategy is a **hypothesis to test**. It has **no** backtest results yet. Every rule
 below is mechanical: two people (or two runs of the code) given the same bars will draw the
@@ -11,14 +11,15 @@ base, price often reacts again. A demand zone acts as support and a supply zone 
 resistance. Volatility (ATR) normalises every size and distance, so the rules adapt
 automatically when gold gets quiet or wild.
 
-**H1 zone = *where* to trade. M5 fair value gap (FVG) = *when* to enter.** The hypothesis: as
+**H4/H1 zone = *where* to trade (when present). M5 fair value gap (FVG) = *when* to enter.** The hypothesis: as
 price falls into a demand zone it leaves bearish FVGs behind. When an M5 candle *closes
 above* the most recent bearish FVG, sellers have failed (the FVG is "inverted"). The entry
 comes on the **retest** of that gap, which should now act as support. Supply is the mirror.
 
-## 1. Zone detection (H1, closed bars only)
+## 1. Zone detection (H4 and H1, closed bars only)
 
-Let `ATR = ATR14(H1)` measured at the base.
+The same rules run independently on **H4** and **H1**. `ATR` means ATR14 of that zone's own
+timeframe, measured at the base.
 
 **Base:** 1–3 consecutive candles, each with `range ≤ 1.0 × ATR` and `body ≤ 0.5 × range`.
 
@@ -35,12 +36,13 @@ Let `ATR = ATR14(H1)` measured at the base.
 - Width `(proximal − distal) ≤ 1.0 × ATR`. A wider zone means the stop is too wide.
 - **Fresh:** price has not traded into the zone since it formed. Only the first retest is
   traded.
-- Age ≤ 120 H1 bars (≈ 5 trading days).
-- Invalidated permanently once an H1 candle **closes** beyond the distal line.
+- Age ≤ 120 H1 bars (≈ 5 trading days) for H1 zones; ≤ 60 H4 bars (≈ 10 trading days) for H4.
+- Invalidated permanently once a candle of the zone's timeframe **closes** beyond the distal line.
 
 **Zone score (logged, used for ranking):**
 `score = impulse_size_in_ATR + (1 if base has 1 candle) − 0.01 × age_bars`.
-When two zones overlap, keep the higher-scoring one.
+When two zones of the same timeframe overlap, keep the higher-scoring one. When an H1 zone
+lies inside or overlaps an H4 zone of the same side, the setup is tagged **H4+H1** (confluence).
 
 ## 2. Volatility rules
 - **Regime gate:** trade only when ATR14(M5) is between its 30th and 95th percentile over the
@@ -60,12 +62,18 @@ Candles `c1, c2, c3` (c3 is the newest):
 
 ## 4. Entry (M5; long described, short is the exact mirror)
 
-1. **Arm:** an M5 candle trades into a fresh H1 **demand** zone (`low ≤ proximal`) without an
-   H1 close below distal. The setup stays armed for 36 M5 bars (3 h).
+1. **Arm** (whichever happens first), staying armed for 36 M5 bars (3 h):
+   - **Zone context:** an M5 candle trades into a fresh H4 or H1 **demand** zone
+     (`low ≤ proximal`) without a close below distal on the zone's timeframe.
+   - **No-zone context:** an M5 candle makes a **new 36-bar low** (a local sell-off extreme),
+     with no fresh zone of either side within 1 × ATR14(H1). Without a zone, there must
+     still be an objective "price fell and stopped" event, otherwise every random FVG
+     break would count as a setup.
 2. **Track the last bearish FVG:** while armed, the reference gap is the **most recently
    created** bearish FVG, formed after the arm or at most 24 bars before it.
 3. **Break (inversion):** an M5 candle **closes above the top** of that gap (`close > c1.low`).
    The FVG is now inverted.
+   *Every setup is tagged with its context:* `H4+H1`, `H4`, `H1` or `NONE`.
 4. **Room to run:** the target (below) must be ≥ 2.0R away. Otherwise cancel.
 5. **Retest entry:** place a **buy limit at the top edge of the inverted FVG**. It is valid for
    12 M5 bars (1 h). Cancel if:
@@ -78,11 +86,12 @@ Candles `c1, c2, c3` (c3 is the newest):
 ## 5. Exits (fixed at entry)
 - **Stop loss:** below the lowest low between arming and the break, minus `0.2 × ATR14(M5)`.
   Widened if needed to the broker stops level.
-- **Take profit:** the nearest opposing H1 supply zone's proximal, capped at `3.0R`. If there
+- **Take profit:** the nearest opposing H4 or H1 supply zone's proximal, capped at `3.0R`. If there
   is none, use `2.5R`.
 - **Time stop:** 72 M5 bars (6 h).
 - **Session/weekend exit:** flat at 20:30 UTC and before the Friday close.
-- One trade per zone, ever. At most one pending limit order at a time.
+- One trade per zone, ever. At most one pending limit order at a time. If two setups arm at
+  once, priority is `H4+H1` > `H4` > `H1` > `NONE`.
 
 ## 6. Variants tested (pre-registered; at most 4)
 | ID | Retest limit price | Trend filter (H1 EMA200) |
@@ -91,6 +100,11 @@ Candles `c1, c2, c3` (c3 is the newest):
 | FVG-B | Top edge | On |
 | FVG-C | Midpoint of the gap (50%) | Off |
 | FVG-D | Midpoint | On |
+
+**Context analysis (reported, not a free choice):** each variant's results are broken down
+by context (`H4+H1`, `H4`, `H1`, `NONE`). This measures whether zones actually add value
+compared with FVG setups alone. Deciding afterwards to drop a context counts as an extra
+test. It is logged and confirmed on the holdout before it is accepted.
 
 The edge fills more often. The midpoint gives a better price and a smaller stop, but misses
 more trades. The test measures this trade-off instead of guessing. Because 4 variants are

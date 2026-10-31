@@ -33,7 +33,7 @@ the item is marked for verification.
 |---|---|---|
 | Demo server name | **[verify on demo]** | A third-party list shows `VantageInternational-Demo`. Use the name shown in the Vantage client portal or MT5. |
 | Gold symbol name and suffix | **[verify on demo]** | Resolve at runtime via `symbols_get("*XAU*")`. Suffixes can differ by account type. |
-| Standard XAUUSD contract size | **[verified, press]** | 100 oz per lot, per Vantage's XAUUSD247 announcement. So 0.01 lot = 1 oz, and a $1 move ≈ $1 P/L. |
+| Standard XAUUSD contract size (**chosen account type**) | **[verified, press]** | 100 oz per lot, per Vantage's XAUUSD247 announcement. So 0.01 lot = 1 oz, and a $1 move ≈ $1 P/L. |
 | XAUUSD247 | **[verified, press]** | 1-oz contract, 24/7 trading, launched Jul 2026, availability varies by region. Finer sizing granularity, but weekend liquidity and spreads differ. It would be studied separately. |
 | MT5 Cent account | **[verified, help-centre search snippet]** | Can be opened from the client portal or app. P/L is in cents, which gives far finer risk granularity on a small account. Spec and spread still to be checked. |
 | `volume_min`, `volume_step` | **[verify on demo]** | 0.01 is common but not confirmed for Vantage. |

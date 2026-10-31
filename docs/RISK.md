@@ -30,9 +30,14 @@ On standard XAUUSD (100 oz/lot), **0.01 lot ≈ $1 P/L per $1 move**. Assuming
 | 1% | $5 | $5 |
 | 3% | $15 | $15 |
 
-The aggressive profile fits supply/demand stops (zone width + ATR buffer) far more often.
-That is a practical reason for it on this account size. A Cent account or XAUUSD247 would
-allow precise sizing at either profile.
+**Chosen account: Vantage Standard.** The M5 FVG stops (below the M5 swing low plus
+0.2 × ATR) are much tighter than zone stops, so signals are expected to fit the limit more often. The backtest
+will measure the actual rejection rate.
+
+**Coarse sizing on a Standard account:** the volume steps by 0.01 lot ($1 per $1). Rounding
+down means the *actual* risk often sits below the target. Example at 3% ($15) with a $4 stop:
+raw size 0.0375 → 0.03 lot → actual risk $12 (2.4%). The journal records target and actual
+risk for every trade, and the backtest uses actual risk, so results aren't overstated.
 
 **Rule: if the minimum volume would risk more than allowed, REJECT the trade. Size is never
 rounded up.**

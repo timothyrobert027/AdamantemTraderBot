@@ -5,7 +5,7 @@ right now, and if not, why not?** It never produces trade direction. That is the
 job. The scanner is pure (no I/O) and fully unit-testable.
 
 ## Inputs
-- Closed M5 and H1 bars (UTC), the current bid/ask, `SymbolSpec`, and a news calendar
+- Closed M5, H1 and H4 bars (UTC), the current bid/ask, `SymbolSpec`, and a news calendar
   (optional).
 
 ## Filters (all must pass; each failure is logged as a reason)
@@ -20,7 +20,7 @@ job. The scanner is pure (no I/O) and fully unit-testable.
 | F6 | Spread absolute | Spread ≤ `max_spread_points` (set from Vantage demo stats) | Cost control |
 | F7 | Spread relative | Spread ≤ 10% of ATR(14, M5) and ≤ 10% of the planned stop | Cost relative to expected move |
 | F8 | Volatility regime | ATR(14, M5) between its 30th and 95th percentile over the last 60 days | Supply/demand reactions need enough movement to pay the spread; skip panic markets |
-| F9 | Zone proximity | Price is within 1.0 × ATR(14, H1) of a fresh, valid zone (see STRATEGY.md) | No zone nearby means nothing to evaluate |
+| F9 | Context (informational, not blocking) | Lists fresh H4/H1 zones within 1.0 × ATR(14, H1) of price; `NONE` if there are none | Tags setups; no-zone setups are allowed |
 | F10 | News blackout | No entries from 30 min before to 30 min after high-impact USD events (CPI, NFP, FOMC, PCE, GDP) | Event slippage |
 | F11 | Exposure | No open position on XAUUSD by this magic number | One position at a time |
 

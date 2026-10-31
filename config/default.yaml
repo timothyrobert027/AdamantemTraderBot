@@ -7,6 +7,7 @@ live_trading_enabled: false
 
 broker:
   name: vantage
+  account_type: standard
   platform: mt5
   require_demo_account: true
   terminal_path: null     # set in config/local.yaml on the VPS
@@ -31,7 +32,9 @@ scanner:
 strategy:
   name: sd_fvg_v1
   variant: FVG-A                # FVG-A..FVG-D, see docs/STRATEGY.md
-  zone_timeframe: H1
+  zone_timeframes: [H4, H1]
+  allow_no_zone_setups: true
+  no_zone_extreme_bars: 36
   atr_period: 14
   base_max_candles: 3
   base_max_range_atr: 1.0
@@ -40,7 +43,7 @@ strategy:
   impulse_min_move_atr: 2.0
   impulse_min_body_frac: 0.6
   zone_max_width_atr: 1.0
-  zone_max_age_bars: 120
+  zone_max_age_bars: {H1: 120, H4: 60}
   min_room_r: 2.0
   # M5 entry: inversion of the last opposing FVG, then retest
   fvg_min_size_atr: 0.15
