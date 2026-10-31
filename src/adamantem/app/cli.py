@@ -13,12 +13,13 @@ from adamantem.backtest.engine import VARIANTS, run_backtest
 from adamantem.backtest.market import build_market
 from adamantem.backtest.metrics import breakdown, summarize, trades_frame
 from adamantem.backtest.replay import build_replay, write_replay
+from adamantem.data import histdata
 from adamantem.data.dukascopy import IncompleteDownload, download_m1
 from adamantem.data.quality import check_m1
 from adamantem.risk.sizing import SymbolSpec
 
 ROOT = Path(__file__).resolve().parents[3]
-SPREAD_SCENARIOS = {"dukascopy": 0.0, "stress_+0.20": 0.20}
+SPREAD_SCENARIOS = {"base": 0.0, "stress_+0.20": 0.20}
 
 
 def load_config(path: Path) -> dict:
@@ -27,11 +28,18 @@ def load_config(path: Path) -> dict:
     return cfg
 
 
-def load_m1(start: date, end: date, cache: Path, budget_s: float | None = None) -> pd.DataFrame:
-    key = cache / f"XAUUSD_M1_{start:%Y%m%d}_{end:%Y%m%d}.parquet"
+def load_m1(
+    start: date, end: date, cache: Path, budget_s: float | None = None,
+    source: str = "histdata", assumed_spread: float = 0.25,
+) -> pd.DataFrame:
+    tag = f"{source}_s{assumed_spread:g}" if source == "histdata" else source
+    key = cache / source / f"XAUUSD_M1_{tag}_{start:%Y%m%d}_{end:%Y%m%d}.parquet"
     if key.exists():
         return pd.read_parquet(key)
-    m1 = download_m1("XAUUSD", start, end, cache / "bi5", budget_s=budget_s)
+    if source == "histdata":
+        m1 = histdata.download_m1("XAUUSD", start, end, cache / source / "zip", assumed_spread)
+    else:
+        m1 = download_m1("XAUUSD", start, end, cache / source / "bi5", budget_s=budget_s)
     key.parent.mkdir(parents=True, exist_ok=True)
     m1.to_parquet(key)
     return m1
@@ -48,7 +56,12 @@ def backtest(args: argparse.Namespace) -> Path:
     out.mkdir(parents=True, exist_ok=True)
     budget = args.download_budget_min * 60 if args.download_budget_min else None
     try:
-        m1 = load_m1(start, end, Path(args.cache), budget)
+        m1 = load_m1(start, end, Path(args.cache), budget, args.source, args.assumed_spread)
+    except histdata.HistDataError as exc:
+        msg = f"# Backtest not run yet: HistData download failed\n\n{exc}\n"
+        (out / "download_status.md").write_text(msg)
+        print(msg)
+        raise SystemExit(3) from None
     except IncompleteDownload as exc:
         pct = 100 * exc.done / exc.total
         msg = (
@@ -91,7 +104,14 @@ def backtest(args: argparse.Namespace) -> Path:
         "validation in docs/STRATEGY.md and must not be read as expected future performance.**",
         "",
         "## Assumptions",
-        "- Data: Dukascopy M1 bid/ask (not Vantage's feed). Real bid/ask spreads per minute.",
+        *(
+            [f"- Data: HistData.com M1 **bid** bars (not Vantage's feed), EST fixed UTC-5 "
+             "converted to UTC. No ask data: ask = bid + an **assumed constant spread of "
+             f"${args.assumed_spread:.2f}** (not measured; real spreads widen at news and "
+             "rollover)."]
+            if args.source == "histdata"
+            else ["- Data: Dukascopy M1 bid/ask (not Vantage's feed). Real spreads per minute."]
+        ),
         "- `stress_+0.20`: $0.20 added to every ask price to approximate a wider retail spread.",
         "- Symbol spec (unverified for Vantage): 100 oz/lot, min lot 0.01, step 0.01, "
         "no commission, account leverage 1:500.",
@@ -137,7 +157,8 @@ def backtest(args: argparse.Namespace) -> Path:
         mk, cfg["strategy"], cfg["scanner"], cfg["risk"], cfg["risk"]["profiles"][prof_name],
         var, spec, start_equity=args.equity, extra_spread=0.0, record_events=True,
     )
-    label = f"{var} · {prof_name} · spread Dukascopy · {start} → {end}"
+    src = "HistData" if args.source == "histdata" else "Dukascopy"
+    label = f"{var} · {prof_name} · dati {src} · {start} → {end}"
     meta = {"variant": var, "profile": prof_name, "start": str(start), "end": str(end),
             "equity": args.equity, "in_sample": True,
             "generated": f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC"}
@@ -157,7 +178,10 @@ def main() -> None:
     bt.add_argument("--end", default="2025-11-01")
     bt.add_argument("--equity", type=float, default=500.0)
     bt.add_argument("--config", default=str(ROOT / "config" / "default.yaml"))
-    bt.add_argument("--cache", default=str(ROOT / "data" / "raw" / "dukascopy"))
+    bt.add_argument("--cache", default=str(ROOT / "data" / "raw"))
+    bt.add_argument("--source", choices=["histdata", "dukascopy"], default="histdata")
+    bt.add_argument("--assumed-spread", type=float, default=0.25,
+                    help="HistData has no ask: constant spread in $ added to bid")
     bt.add_argument("--out", default=str(ROOT / "reports"))
     bt.add_argument("--download-budget-min", type=float, default=None)
     args = parser.parse_args()

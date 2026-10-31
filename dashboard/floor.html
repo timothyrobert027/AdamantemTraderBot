@@ -382,7 +382,7 @@ function setMode(m) {
     notice.innerHTML = "<strong>Esempio, nessun dato reale.</strong> Gli stati qui sotto mostrano come lavora la squadra in un ciclo tipico. Nessun prezzo, trade o risultato è vero.";
     steps = DAY;
   } else {
-    notice.innerHTML = `<strong>Replay del backtest (in-sample, non validato).</strong> ${replay.label}. Prezzi Dukascopy, non Vantage. Generato ${replay.meta.generated}.`;
+    notice.innerHTML = `<strong>Replay del backtest (in-sample, non validato).</strong> ${replay.label}. Prezzi storici gratuiti, non Vantage. Generato ${replay.meta.generated}.`;
     loadDay(daySel.value);
   }
   stepIndex = -1; acc = 0;

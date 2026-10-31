@@ -1,7 +1,7 @@
 name: Backtest (exploratory, in-sample)
 
 # Manual run only: Actions tab -> "Backtest" -> Run workflow.
-# Downloads Dukascopy XAUUSD M1 bid/ask data and runs every variant/profile/spread scenario.
+# Downloads XAUUSD M1 data (HistData by default) and runs every variant/profile/spread scenario.
 # The report appears in the run summary and as a downloadable artifact.
 
 on:
@@ -13,6 +13,12 @@ on:
       end:
         description: "End date, exclusive (the holdout after it stays untouched)"
         default: "2025-11-01"
+      source:
+        description: "Data source: histdata (recommended) or dukascopy"
+        default: "histdata"
+      spread:
+        description: "Assumed spread in $ for HistData (bid-only data)"
+        default: "0.25"
 
 permissions:
   contents: write  # only used to publish results to the backtest-results branch
@@ -28,20 +34,23 @@ jobs:
           python-version: "3.12"
       - uses: actions/cache/restore@v4
         with:
-          path: data/raw/dukascopy
-          key: dukascopy-xauusd-${{ github.run_id }}
-          restore-keys: dukascopy-xauusd-
+          path: data/raw
+          key: xauusd-data-${{ github.run_id }}
+          restore-keys: |
+            xauusd-data-
+            dukascopy-xauusd-
       - run: pip install -e .
       - run: >
           python -m adamantem.app.cli backtest
           --start "${{ inputs.start }}" --end "${{ inputs.end }}"
+          --source "${{ inputs.source }}" --assumed-spread "${{ inputs.spread }}"
           --download-budget-min 70
       - name: Save downloaded data (even if the run failed)
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: data/raw/dukascopy
-          key: dukascopy-xauusd-${{ github.run_id }}
+          path: data/raw
+          key: xauusd-data-${{ github.run_id }}
       - name: Publish summary
         if: always()
         run: |
