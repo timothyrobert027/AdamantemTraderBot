@@ -1,0 +1,23 @@
+# Development Roadmap (stage-gated)
+
+Each stage ends with a **results review**. The next stage starts only after you approve it.
+
+| Stage | Name | Deliverables | Gate (what you review) | Env |
+|---|---|---|---|---|
+| **0** | Architecture | This documentation, repo skeleton, CI, safety test | Approve architecture, strategy hypothesis, risk limits | Cloud |
+| 1 | Foundation | `config`, `core`, `safety`, logging; full safety and unit tests | CI green; safety tests show live mode and real accounts are refused | Cloud |
+| 2 | Data | Dukascopy downloader, resampler, quality checks, Parquet store; fake symbol spec; `export_symbol_spec.py` | Data quality report (gaps, spikes, coverage) for ≥ 4 years | Cloud |
+| 3 | Indicators + scanner | `indicators`, `scanner` with per-filter tests | Scanner statistics: % of time tradeable and rejection-reason distribution | Cloud |
+| 4 | Strategy + risk | `strategy`, `baselines`, `risk` with property tests | Signal list on fixture data; sizing tables; % of signals rejected by min-lot | Cloud |
+| 5 | Backtest engine | `backtest` engine, costs, fills, metrics, report | Determinism proof; a single in-sample run *clearly labelled* | Cloud |
+| 6 | Validation | Walk-forward, Monte Carlo, baseline comparison, holdout | Pass/fail against the pre-registered criteria in `STRATEGY.md`. **Failure means no deployment.** | Cloud |
+| 7 | MT5 adapter | `mt5_broker`, `mt5_provider`, contract tests with a fake MT5, `adamantem doctor` | Contract test suite green | Cloud |
+| 8 | VPS demo | Windows VPS setup, service, monitoring, cost calibration on Vantage data | ≥ 3 months, ≥ 100 demo trades; live vs backtest comparison | Windows |
+| 9 | Review | Written assessment | Your decision. Live trading is **not** part of this project's scope. | — |
+
+## Decisions needed from you at the Stage 0 gate
+1. Approve or change the strategy hypothesis and the pre-registered acceptance criteria.
+2. Approve the risk limits (1% per trade, 3% daily, 15% kill switch).
+3. Account type to research: Standard, Cent, or XAUUSD247 (or all three as separate specs).
+4. Whether you can get temporary access to any Windows PC for an early read-only symbol spec
+   export.

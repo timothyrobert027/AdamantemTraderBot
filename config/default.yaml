@@ -1,0 +1,57 @@
+# ADAMANTEM AI TRADER - default configuration.
+# NO credentials belong in this file (or any file in this repo).
+# Local overrides go in config/local.yaml (git-ignored).
+
+mode: backtest            # research | backtest | paper | demo  (there is no live mode)
+live_trading_enabled: false
+
+broker:
+  name: vantage
+  platform: mt5
+  require_demo_account: true
+  terminal_path: null     # set in config/local.yaml on the VPS
+  symbol_pattern: "*XAU*" # resolved at runtime via symbols_get
+  magic_number: 50500
+
+instrument:
+  base_symbol: XAUUSD
+  entry_timeframe: M15
+  trend_timeframe: H1
+
+scanner:
+  session_utc: ["07:00", "20:00"]
+  rollover_block_utc: ["20:45", "22:15"]
+  friday_cutoff_utc: "18:00"
+  max_spread_points: null       # calibrate from Vantage demo data
+  max_spread_atr_fraction: 0.10
+  vol_percentile_range: [10, 95]
+  vol_lookback_days: 60
+  trend_min_ema_gap_atr: 0.5
+  news_blackout_minutes: 30
+
+strategy:
+  name: trend_pullback_v1
+  ema_fast_h1: 50
+  ema_slow_h1: 200
+  ema_pullback_m15: 20
+  rsi_period: 14
+  rsi_long_reset: 40
+  rsi_short_reset: 60
+  lookback_bars: 6
+  sl_atr_mult: 1.5
+  tp_r_mult: 2.0
+  time_stop_bars: 16
+  session_exit_utc: "20:30"
+
+risk:
+  risk_per_trade_pct: 1.0
+  risk_per_trade_cap_pct: 2.0
+  max_open_positions: 1
+  max_trades_per_day: 3
+  max_consecutive_losses: 3
+  daily_loss_limit_pct: 3.0
+  weekly_loss_limit_pct: 6.0
+  max_drawdown_kill_pct: 15.0
+  max_effective_leverage: 10.0
+  min_free_margin_pct: 70.0
+  min_seconds_between_orders: 60

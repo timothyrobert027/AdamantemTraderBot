@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .[dev]
+      - run: ruff check .
+      - run: pytest --cov=adamantem --cov-report=term-missing
+
+  windows-mt5-import:
+    # Confirms the official MetaTrader5 wheel installs; no terminal, no orders.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .[mt5]
+      - run: python -c "import MetaTrader5 as mt5; print(mt5.__version__)"

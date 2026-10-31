@@ -1,0 +1,30 @@
+# Secrets - never commit
+.env
+.env.*
+!.env.example
+config/local.yaml
+*.key
+*.pem
+secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Data and outputs (large / regenerable)
+data/raw/*
+data/processed/*
+!data/**/.gitkeep
+reports/*
+!reports/.gitkeep
+*.sqlite
+*.db
+logs/
