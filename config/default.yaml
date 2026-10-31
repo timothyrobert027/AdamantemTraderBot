@@ -31,7 +31,7 @@ scanner:
 
 strategy:
   name: sd_fvg_v1
-  variant: FVG-A                # FVG-A..FVG-D, see docs/STRATEGY.md
+  variant: FVG-A+BE             # FVG-A..FVG-D, each also with +BE; see docs/STRATEGY.md
   zone_timeframes: [H4, H1]
   allow_no_zone_setups: true
   no_zone_extreme_bars: 36
@@ -56,12 +56,14 @@ strategy:
   tp_max_r: 3.0
   tp_default_r: 2.5
   time_stop_bars: 72
+  breakeven_trigger_r: 1.0      # +BE variants: at +1R move the stop to entry
+  breakeven_offset_r: 0.05      # ...plus 0.05R so costs are roughly covered
   session_exit_utc: "20:30"
   trend_filter: false
   trend_ema: 200
 
 risk:
-  profile: aggressive           # standard | aggressive (backtests report both)
+  profile: max                  # standard | aggressive | max (backtests report all three)
   profiles:
     standard:
       risk_per_trade_pct: 1.0
@@ -76,6 +78,13 @@ risk:
       weekly_loss_limit_pct: 12.0
       max_drawdown_kill_pct: 30.0
       max_effective_leverage: 20.0
+      min_free_margin_pct: 50.0
+    max:                        # user-selected high risk: demo/backtest only
+      risk_per_trade_pct: 5.0
+      daily_loss_limit_pct: 10.0
+      weekly_loss_limit_pct: 20.0
+      max_drawdown_kill_pct: 40.0
+      max_effective_leverage: 50.0
       min_free_margin_pct: 50.0
   max_open_positions: 1
   max_trades_per_day: 3

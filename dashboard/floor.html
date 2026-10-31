@@ -369,7 +369,7 @@ document.getElementById("next").addEventListener("click", () => { advance(); acc
 // ---------- replay of a real backtest run ----------
 const daySel = document.getElementById("day");
 const hhmm = m => new Date(m * 60000).toISOString().slice(11, 16);
-const REASON = { stop: "stop", target: "target", time: "6 ore", session: "fine sessione" };
+const REASON = { stop: "stop", breakeven: "break-even", target: "target", time: "6 ore", session: "fine sessione" };
 
 function setMode(m) {
   mode = m;

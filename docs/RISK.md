@@ -1,8 +1,15 @@
 # Risk Management — designed for a $500 account
 
-There are two risk profiles: **standard** and **aggressive** ("high risk, high reward",
-selected by the user). Every backtest reports **both**, so the trade-off is visible. Hard
-ceilings apply on top of either profile: the config validator rejects anything above them.
+There are three risk profiles: **standard**, **aggressive** and **max**. Max is the user's
+choice ("high risk, more margin per trade") and is the default for the replay. Every backtest
+reports **all three**, so the trade-off is visible. Hard ceilings apply on top of every profile:
+the config validator rejects anything above them.
+
+**Why `max` raises the leverage cap:** at a gold price near $4,000, one 0.01 lot is about $4,000
+of notional, 8× a $500 account. With the aggressive profile's 20× cap, positions top out at
+0.02 lot. A $3 stop then risks only about $6 (1.2%), not the intended 3%. The 50× cap of `max`
+allows 0.06 lot in the same case, about $18.60 at risk (3.7%), close to its 5% target. Larger
+positions mean larger losses too: see the table below.
 
 ## 1. What higher risk means (pure arithmetic, not a backtest)
 
@@ -52,19 +59,19 @@ reject if volume < volume_min  or  volume × loss_per_lot > risk_money
 
 ## 4. Limits
 
-| Limit | Standard | Aggressive | Hard ceiling | Action on breach |
-|---|---|---|---|---|
-| Risk per trade | 1% | 3% | 3% | Reject |
-| Open positions | 1 | 1 | 2 | Reject |
-| Trades per day | 3 | 3 | 5 | Reject until next day |
-| Consecutive losses | 3 | 3 | 4 | Pause until next day |
-| Daily loss | 3% | 6% | 8% | Close all, pause until next day |
-| Weekly loss | 6% | 12% | 15% | Close all, pause until next week |
-| Max drawdown from peak | 15% | 30% | 35% | **Kill switch**: halt; only a human can reset |
-| Effective leverage (notional/equity) | 10× | 20× | 25× | Reject |
-| Free margin after entry | ≥ 70% | ≥ 50% | ≥ 50% | Reject |
-| Server-side stop on every order | required | required | — | Reject |
-| Flat before weekend | yes | yes | — | Forced exit |
+| Limit | Standard | Aggressive | Max | Hard ceiling | Action on breach |
+|---|---|---|---|---|---|
+| Risk per trade | 1% | 3% | 5% | 5% | Reject |
+| Open positions | 1 | 1 | 1 | 2 | Reject |
+| Trades per day | 3 | 3 | 3 | 5 | Reject until next day |
+| Consecutive losses | 3 | 3 | 3 | 4 | Pause until next day |
+| Daily loss | 3% | 6% | 10% | 10% | Close all, pause until next day |
+| Weekly loss | 6% | 12% | 20% | 20% | Close all, pause until next week |
+| Max drawdown from peak | 15% | 30% | 40% | 40% | **Kill switch**: halt; only a human can reset |
+| Effective leverage (notional/equity) | 10× | 20× | 50× | 50× | Reject |
+| Free margin after entry | ≥ 70% | ≥ 50% | ≥ 50% | ≥ 50% | Reject |
+| Server-side stop on every order | required | required | required | — | Reject |
+| Flat before weekend | yes | yes | yes | — | Forced exit |
 
 ## 5. Failure modes covered
 - **Disconnect:** server-side SL/TP protect open positions. On reconnect, reconcile first.

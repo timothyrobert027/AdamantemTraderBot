@@ -92,8 +92,13 @@ Candles `c1, c2, c3` (c3 is the newest):
 - **Session/weekend exit:** flat at 20:30 UTC and before the Friday close.
 - One trade per zone, ever. At most one pending limit order at a time. If two setups arm at
   once, priority is `H4+H1` > `H4` > `H1` > `NONE`.
+- **Break-even stop (`+BE` variants only, requested by the user):** once a bar reaches
+  +1R in favour (bid high for longs, ask low for shorts), the stop moves to entry + 0.05R
+  (entry − 0.05R for shorts). The new stop applies from the **next** bar: inside the bar that
+  triggered it, the original stop still counts, which is the conservative assumption. An exit
+  at the moved stop is reported as `breakeven`, separate from `stop`.
 
-## 6. Variants tested (pre-registered; at most 4)
+## 6. Variants tested (pre-registered; 8 in total)
 | ID | Retest limit price | Trend filter (H1 EMA200) |
 |---|---|---|
 | FVG-A | Top edge of the inverted gap | Off |
@@ -101,14 +106,19 @@ Candles `c1, c2, c3` (c3 is the newest):
 | FVG-C | Midpoint of the gap (50%) | Off |
 | FVG-D | Midpoint | On |
 
+Each of the four is also tested with the break-even stop (`FVG-A+BE` … `FVG-D+BE`), giving
+8 variants. Break-even usually raises the share of trades that don't lose, but it also stops
+out trades that would later have reached the target. The test measures whether the net
+effect on average R is positive, instead of assuming it.
+
 **Context analysis (reported, not a free choice):** each variant's results are broken down
 by context (`H4+H1`, `H4`, `H1`, `NONE`). This measures whether zones actually add value
 compared with FVG setups alone. Deciding afterwards to drop a context counts as an extra
 test. It is logged and confirmed on the holdout before it is accepted.
 
 The edge fills more often. The midpoint gives a better price and a smaller stop, but misses
-more trades. The test measures this trade-off instead of guessing. Because 4 variants are
-tested, the best one must beat random entry at p < 0.0125 (Bonferroni).
+more trades. The test measures this trade-off instead of guessing. Because 8 variants are
+tested, the best one must beat random entry at p < 0.00625 (Bonferroni, 0.05 / 8).
 
 ## 7. Validation protocol (fixed before any results are seen)
 1. **Data:** ≥ 4 years of M1 XAUUSD resampled to M5/H1. The last 12 months are a holdout,

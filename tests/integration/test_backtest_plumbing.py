@@ -56,6 +56,8 @@ def test_trade_invariants(cfg, market, variant):
             assert t.pnl > 0
         if t.exit_reason == "stop":
             assert t.r_multiple < 0
+        if t.exit_reason == "breakeven":
+            assert -0.5 < t.r_multiple < 0.5
         assert t.volume >= 0.01
 
 
@@ -105,3 +107,14 @@ def test_replay_export_matches_trades(cfg, market):
         assert [e[0] for e in events] == sorted(e[0] for e in events)
         assert {e[1] for e in events} <= {"scanner", "hunter", "sniper", "risk", "exec",
                                           "ledger", "boss"}
+
+
+def test_breakeven_changes_only_be_variants(cfg, market):
+    prof = cfg["risk"]["profiles"]["standard"]
+    plain = _run(cfg, market, "FVG-A", "standard")
+    be = _run(cfg, market, "FVG-A+BE", "standard")
+    assert "breakeven_moves" not in plain.counters
+    assert all(t.exit_reason != "breakeven" for t in plain.trades)
+    if be.counters.get("breakeven_moves"):
+        assert any(t.exit_reason in ("breakeven", "target", "time", "session") for t in be.trades)
+    assert prof["risk_per_trade_pct"] == 1.0

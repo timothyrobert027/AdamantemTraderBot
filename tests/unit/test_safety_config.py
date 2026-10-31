@@ -35,11 +35,11 @@ def test_no_credential_keys_in_config():
 
 
 HARD_CEILINGS = {
-    "risk_per_trade_pct": 3.0,
-    "daily_loss_limit_pct": 8.0,
-    "weekly_loss_limit_pct": 15.0,
-    "max_drawdown_kill_pct": 35.0,
-    "max_effective_leverage": 25.0,
+    "risk_per_trade_pct": 5.0,
+    "daily_loss_limit_pct": 10.0,
+    "weekly_loss_limit_pct": 20.0,
+    "max_drawdown_kill_pct": 40.0,
+    "max_effective_leverage": 50.0,
 }
 
 

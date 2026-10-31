@@ -19,16 +19,22 @@ from adamantem.backtest.market import Market
 from adamantem.risk.sizing import SymbolSpec, size_position
 
 PRIORITY = {"H4+H1": 3, "H4": 2, "H1": 1, "NONE": 0}
-VARIANTS = {
+_BASE_VARIANTS = {
     "FVG-A": {"retest_price": "edge", "trend_filter": False},
     "FVG-B": {"retest_price": "edge", "trend_filter": True},
     "FVG-C": {"retest_price": "midpoint", "trend_filter": False},
     "FVG-D": {"retest_price": "midpoint", "trend_filter": True},
 }
+# Each base variant is tested without and with the break-even stop (docs/STRATEGY.md §5).
+VARIANTS = {
+    **{k: {**v, "breakeven": False} for k, v in _BASE_VARIANTS.items()},
+    **{f"{k}+BE": {**v, "breakeven": True} for k, v in _BASE_VARIANTS.items()},
+}
 
 
 EXIT_TEXT = {
     "stop": "stop loss",
+    "breakeven": "stop a break-even",
     "target": "target",
     "time": "limite di 6 ore",
     "session": "fine sessione",
@@ -85,6 +91,8 @@ class Pending:
     arm_i: int = -1
     fvg_i: int = -1
     zone_ids: tuple = ()
+    orig_stop: float = float("nan")
+    be_active: bool = False
 
 
 @dataclass
@@ -198,6 +206,8 @@ def run_backtest(
     fri_cut = _hm(scanner["friday_cutoff_utc"])
     exit_min = _hm(params["session_exit_utc"])
     vlo, vhi = scanner["vol_percentile_range"]
+    be_trigger = params["breakeven_trigger_r"]
+    be_offset = params["breakeven_offset_r"]
 
     zones = {z.zid: z for z in mk.zones}
     fresh: dict[int, object] = {}
@@ -242,7 +252,7 @@ def run_backtest(
                 exit_time=mk.t_open[k] + pd.Timedelta("5min"),
                 entry=pos.limit,
                 exit=price,
-                stop=pos.stop,
+                stop=pos.orig_stop,
                 target=pos.target,
                 volume=pos.volume,
                 risk_money=pos.risk_money,
@@ -353,7 +363,7 @@ def run_backtest(
             side=side, placed_i=i, expire_i=i + params["retest_window_bars"], limit=limit,
             stop=stop, target=target, risk_r=r, gap_bottom=f.bottom, gap_top=f.top,
             volume=size.volume, risk_money=size.risk_money, context=a.context,
-            arm_i=a.arm_i, fvg_i=f.index, zone_ids=a.zone_ids,
+            arm_i=a.arm_i, fvg_i=f.index, zone_ids=a.zone_ids, orig_stop=stop,
         )
         bump("orders_placed")
         pct = 100 * size.risk_money / rs.equity
@@ -369,13 +379,24 @@ def run_backtest(
         if pos is not None:
             px = stop_hit(i)
             if px is not None:
-                close_position(i, px, "stop")
+                close_position(i, px, "breakeven" if pos.be_active else "stop")
             elif (mk.bh[i] >= pos.target) if pos.side == "long" else (al[i] <= pos.target):
                 close_position(i, pos.target, "target")
             elif i - pos_fill_i >= params["time_stop_bars"]:
                 close_position(i, mk.bc[i] if pos.side == "long" else ac[i], "time")
             elif mk.close_minute[i] >= exit_min or mk.close_minute[i] < s_open:
                 close_position(i, mk.bc[i] if pos.side == "long" else ac[i], "session")
+            # Break-even: once price has run +trigger R, move the stop to entry (+ small offset).
+            # It takes effect from the next bar, never inside the bar that triggered it.
+            if pos is not None and var["breakeven"] and not pos.be_active:
+                sign = 1.0 if pos.side == "long" else -1.0
+                trigger = pos.limit + sign * be_trigger * pos.risk_r
+                if (mk.bh[i] >= trigger) if pos.side == "long" else (al[i] <= trigger):
+                    pos.stop = pos.limit + sign * be_offset * pos.risk_r
+                    pos.be_active = True
+                    bump("breakeven_moves")
+                    ev(i, "risk", "ok", f"Trade a +{be_trigger:g}R: stop spostato a break-even "
+                                        f"({pos.stop:.2f}).")
 
         # 2. Pending limit order: fill or cancel.
         if pending is not None and i > pending.placed_i:
