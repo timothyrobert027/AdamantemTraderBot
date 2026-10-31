@@ -100,7 +100,7 @@ def backtest(args: argparse.Namespace) -> Path:
         f"Generated {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC. Period {start} to {end} "
         f"(the holdout after {end} was NOT used). Start equity ${args.equity:.0f}.",
         "",
-        "**This is a single in-sample run on Dukascopy data. It is not the walk-forward "
+        "**This is a single in-sample run on free historical data (see Assumptions). It is not the walk-forward "
         "validation in docs/STRATEGY.md and must not be read as expected future performance.**",
         "",
         "## Assumptions",
