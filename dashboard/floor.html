@@ -112,7 +112,7 @@ footer { color: var(--muted); font-size: 12.5px; display: grid; gap: 4px; }
 
   <div class="stage" id="stage">
     <canvas id="floor" width="192" height="112" aria-label="Sala di trading in pixel con sette bot alle scrivanie"></canvas>
-    <div class="clock" id="clock">--:-- UTC</div>
+    <div class="clock" id="clock">--:-- ora it.</div>
   </div>
 
   <div class="controls">
@@ -168,7 +168,7 @@ const LABEL = { idle: "a riposo", work: "al lavoro", ok: "ok", bad: "blocco", wa
 
 // Example day: each step changes some bots' state. Illustrative only.
 const DAY = [
-  { t: "06:55", s: { boss: ["wait", "Mercato aperto ma fuori sessione. Si parte alle 07:00 UTC."], scanner: ["wait", "Fuori sessione: nessuna entrata prima delle 07:00 UTC."], hunter: ["work", "Aggiorno le zone H4 e H1 con le candele della notte."], sniper: ["idle", "Nessun setup armato."], risk: ["idle", "Limiti giornalieri azzerati. Pronto."], exec: ["idle", "Collegato al terminale demo. Nessun ordine."], ledger: ["work", "Apro il journal del giorno."] } },
+  { t: "06:55", s: { boss: ["wait", "Mercato aperto ma fuori sessione. Si parte alle 08:00."], scanner: ["wait", "Fuori sessione: nessuna entrata prima delle 08:00."], hunter: ["work", "Aggiorno le zone H4 e H1 con le candele della notte."], sniper: ["idle", "Nessun setup armato."], risk: ["idle", "Limiti giornalieri azzerati. Pronto."], exec: ["idle", "Collegato al terminale demo. Nessun ordine."], ledger: ["work", "Apro il journal del giorno."] } },
   { t: "07:05", s: { boss: ["work", "Candela M5 chiusa. Avvio il ciclo."], scanner: ["ok", "Spread ok, volatilità nel range, dati freschi: si può operare."], hunter: ["ok", "3 zone fresche attive: 1 H4, 2 H1."] } },
   { t: "08:40", s: { scanner: ["ok", "Tutti i filtri passano."], hunter: ["work", "Il prezzo entra in una zona di domanda H1 dentro una H4: contesto H4+H1."], sniper: ["work", "Setup long armato. Seguo l'ultimo FVG ribassista su M5."] } },
   { t: "08:55", s: { hunter: ["ok", "Zona usata. Non verrà più tradata."], sniper: ["work", "Chiusura M5 sopra il bordo dell'FVG: inversione."], boss: ["work", "Passo il segnale al Risk Manager."] } },
@@ -179,10 +179,14 @@ const DAY = [
   { t: "14:30", s: { scanner: ["bad", "Spread oltre il 10% dell'ATR M5 vicino alla notizia USD. Stop entrate."], sniper: ["idle", "Setup scartato dallo scanner."], ledger: ["work", "Registro il motivo del rifiuto."] } },
   { t: "15:20", s: { scanner: ["ok", "Spread rientrato."], sniper: ["work", "Setup short senza zona (contesto NONE): inversione dell'FVG rialzista."], risk: ["bad", "NO: il lotto minimo rischierebbe più del consentito. Trade rifiutato."] } },
   { t: "15:20", s: { sniper: ["idle", "Setup annullato dal Risk Manager."], ledger: ["work", "Rifiuto registrato: min_lot_exceeds_risk."], boss: ["work", "Il Risk Manager ha l'ultima parola."] } },
-  { t: "20:30", s: { scanner: ["wait", "Fine sessione: nessuna entrata fino a domani."], exec: ["ok", "Nessuna posizione aperta: niente da chiudere."], ledger: ["ok", "Report del giorno pronto."], boss: ["ok", "Giornata chiusa. Ci vediamo alle 07:00 UTC."], hunter: ["work", "Continuo ad aggiornare le zone durante la notte."], risk: ["idle", "Limiti azzerati a mezzanotte UTC."] } },
+  { t: "20:30", s: { scanner: ["wait", "Fine sessione: nessuna entrata fino a domani."], exec: ["ok", "Nessuna posizione aperta: niente da chiudere."], ledger: ["ok", "Report del giorno pronto."], boss: ["ok", "Giornata chiusa. Ci vediamo alle 08:00."], hunter: ["work", "Continuo ad aggiornare le zone durante la notte."], risk: ["idle", "Limiti azzerati all'01:00 (mezzanotte UTC)."] } },
 ];
 
 const state = Object.fromEntries(BOTS.map(b => [b.id, ["idle", "In attesa del primo ciclo."]]));
+// Italian time everywhere. The example day is written in UTC: show it as a winter (CET) day.
+const ROME = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit", hour12: false });
+const hhmm = m => ROME.format(new Date(m * 60000));
+for (const s of DAY) s.t = hhmm(Date.UTC(2026, 0, 15, +s.t.slice(0, 2), +s.t.slice(3, 5)) / 60000);
 let steps = DAY;
 let stepIndex = -1;
 let mode = "example";
@@ -249,7 +253,7 @@ function render() {
   bubble.classList.toggle("below", below);
   bubble.style.top = ((below ? b.y + 9 : b.y - 13) / H * 100) + "%";
   const step = steps[Math.max(stepIndex, 0)];
-  document.getElementById("clock").textContent = step ? step.t + " UTC" : "--:-- UTC";
+  document.getElementById("clock").textContent = (step ? step.t : "--:--") + " ora it.";
   document.getElementById("step").textContent = steps.length
     ? `Evento ${stepIndex + 1} di ${steps.length} · ${mode === "example" ? "esempio" : "backtest " + daySel.value}`
     : "Nessun evento";
@@ -370,7 +374,6 @@ document.getElementById("next").addEventListener("click", () => { advance(); acc
 
 // ---------- replay of a real backtest run ----------
 const daySel = document.getElementById("day");
-const hhmm = m => new Date(m * 60000).toISOString().slice(11, 16);
 const REASON = { stop: "stop", breakeven: "break-even", lock: "stop su TP1", trail: "runner (stop mobile)", target: "target", tp1: "TP1", tp2: "TP2", tp3: "TP3", time: "6 ore", session: "fine sessione" };
 
 function setMode(m) {
